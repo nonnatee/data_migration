@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_migration_record_map_list" model="ir.ui.view">
+        <field name="name">migration.record.map.list</field>
+        <field name="model">migration.record.map</field>
+        <field name="arch" type="xml">
+            <list string="Mapped Records Cross-Reference">
+                <field name="template_id"/>
+                <field name="source_key"/>
+                <field name="target_model"/>
+                <field name="target_id"/>
+                <field name="xml_id"/>
+                <field name="checksum"/>
+                <field name="last_migrated"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_migration_record_map_form" model="ir.ui.view">
+        <field name="name">migration.record.map.form</field>
+        <field name="model">migration.record.map</field>
+        <field name="arch" type="xml">
+            <form string="Record Cross-Reference Mapping">
+                <header>
+                    <button name="action_open_target_record" type="object" string="Open Target Odoo Record" class="btn-primary" icon="fa-external-link"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group string="Source Reference">
+                            <field name="template_id"/>
+                            <field name="source_key"/>
+                            <field name="checksum"/>
+                        </group>
+                        <group string="Target Odoo Record">
+                            <field name="target_model"/>
+                            <field name="target_id"/>
+                            <field name="xml_id"/>
+                            <field name="last_migrated"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_migration_record_map" model="ir.actions.act_window">
+        <field name="name">Mapped Records Cross-Reference</field>
+        <field name="res_model">migration.record.map</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

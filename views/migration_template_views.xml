@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Template List View -->
+    <record id="view_migration_template_list" model="ir.ui.view">
+        <field name="name">migration.template.list</field>
+        <field name="model">migration.template</field>
+        <field name="arch" type="xml">
+            <list string="Mapping Templates">
+                <field name="name"/>
+                <field name="connection_id"/>
+                <field name="target_model_id"/>
+                <field name="operation_mode"/>
+                <field name="batch_size"/>
+                <field name="record_map_count"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Template Form View -->
+    <record id="view_migration_template_form" model="ir.ui.view">
+        <field name="name">migration.template.form</field>
+        <field name="model">migration.template</field>
+        <field name="arch" type="xml">
+            <form string="Mapping Template">
+                <header>
+                    <button name="action_open_run_wizard" type="object" string="Run Migration Job" class="btn-primary" icon="fa-play"/>
+                    <button name="action_auto_map_fields" type="object" string="Auto-Map Matching Fields" class="btn-secondary" icon="fa-magic"/>
+                    <button name="action_view_record_mappings" type="object" string="View Mapped Records" class="btn-info" icon="fa-database"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Customer Contacts Migration Template"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Source &amp; Target Setup">
+                            <field name="connection_id"/>
+                            <field name="target_model_id" options="{'no_create': True}"/>
+                            <field name="target_model_name" invisible="1"/>
+                        </group>
+                        <group string="Execution Parameters">
+                            <field name="operation_mode"/>
+                            <field name="batch_size"/>
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Field Mapping Rules" name="mappings">
+                            <field name="mapping_line_ids">
+                                <list editable="bottom" decoration-info="is_key_field == True">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="source_field"/>
+                                    <field name="target_field_id" options="{'no_create': True}"/>
+                                    <field name="target_field_ttype" optional="show"/>
+                                    <field name="transform_type"/>
+                                    <field name="default_value" optional="hide"/>
+                                    <field name="lookup_strategy" invisible="target_field_ttype not in ('many2one', 'many2many', 'one2many')"/>
+                                    <field name="lookup_field_id" invisible="lookup_strategy not in ('field_search', 'auto_create')" options="{'no_create': True}"/>
+                                    <field name="is_key_field" string="Match Key"/>
+                                </list>
+                                <form string="Field Mapping Detail">
+                                    <group>
+                                        <group string="Mapping Pair">
+                                            <field name="source_field"/>
+                                            <field name="target_field_id"/>
+                                            <field name="target_field_ttype"/>
+                                            <field name="relation_model" invisible="not relation_model"/>
+                                            <field name="is_key_field"/>
+                                        </group>
+                                        <group string="Transformation Rule">
+                                            <field name="transform_type"/>
+                                            <field name="default_value"/>
+                                        </group>
+                                    </group>
+                                    <group string="Advanced Transformation Settings">
+                                        <field name="value_mapping_json" invisible="transform_type != 'value_map'"/>
+                                        <field name="python_code" invisible="transform_type != 'python_expr'" widget="ace" options="{'mode': 'python'}"/>
+                                    </group>
+                                    <group string="Relational Resolution" invisible="target_field_ttype not in ('many2one', 'many2many', 'one2many')">
+                                        <field name="lookup_strategy"/>
+                                        <field name="lookup_field_id" invisible="lookup_strategy not in ('field_search', 'auto_create')"/>
+                                        <field name="lookup_domain" invisible="lookup_strategy != 'domain_expr'"/>
+                                    </group>
+                                </form>
+                            </field>
+                        </page>
+                        <page string="Execution History" name="history">
+                            <field name="job_ids" readonly="1">
+                                <list string="Jobs">
+                                    <field name="name"/>
+                                    <field name="start_time"/>
+                                    <field name="state" widget="badge" decoration-success="state == 'done'" decoration-warning="state == 'done_with_errors'" decoration-danger="state == 'failed'"/>
+                                    <field name="total_records"/>
+                                    <field name="success_records"/>
+                                    <field name="error_records"/>
+                                    <field name="progress_percent" widget="progressbar"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_migration_template" model="ir.actions.act_window">
+        <field name="name">Mapping Templates</field>
+        <field name="res_model">migration.template</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_migration_studio_dashboard" model="ir.actions.client">
+        <field name="name">Migration Studio Dashboard</field>
+        <field name="tag">data_migration.dashboard</field>
+    </record>
+</odoo>

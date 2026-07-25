@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Top-Level App Menu -->
+    <menuitem id="menu_migration_studio_root"
+              name="Migration Studio"
+              web_icon="data_migration,static/description/icon.png"
+              sequence="15"/>
+
+    <!-- Dashboard -->
+    <menuitem id="menu_migration_studio_dashboard"
+              name="Dashboard"
+              parent="menu_migration_studio_root"
+              action="action_migration_studio_dashboard"
+              sequence="5"/>
+
+    <!-- ETL Configuration Menu Category -->
+    <menuitem id="menu_migration_studio_config"
+              name="ETL Setup"
+              parent="menu_migration_studio_root"
+              sequence="10"/>
+
+    <menuitem id="menu_migration_connections"
+              name="Data Connections"
+              parent="menu_migration_studio_config"
+              action="action_migration_connection"
+              sequence="10"/>
+
+    <menuitem id="menu_migration_templates"
+              name="Mapping Templates"
+              parent="menu_migration_studio_config"
+              action="action_migration_template"
+              sequence="20"/>
+
+    <!-- Execution & History Category -->
+    <menuitem id="menu_migration_studio_execution"
+              name="Executions &amp; Audit"
+              parent="menu_migration_studio_root"
+              sequence="20"/>
+
+    <menuitem id="menu_migration_jobs"
+              name="Migration Jobs"
+              parent="menu_migration_studio_execution"
+              action="action_migration_job"
+              sequence="10"/>
+
+    <menuitem id="menu_migration_logs"
+              name="Audit Logs"
+              parent="menu_migration_studio_execution"
+              action="action_migration_log"
+              sequence="20"/>
+
+    <menuitem id="menu_migration_record_map"
+              name="Record Cross-References"
+              parent="menu_migration_studio_execution"
+              action="action_migration_record_map"
+              sequence="30"/>
+</odoo>

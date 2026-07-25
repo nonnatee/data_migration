@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Job List View -->
+    <record id="view_migration_job_list" model="ir.ui.view">
+        <field name="name">migration.job.list</field>
+        <field name="model">migration.job</field>
+        <field name="arch" type="xml">
+            <list string="Migration Jobs">
+                <field name="name"/>
+                <field name="template_id"/>
+                <field name="target_model_name"/>
+                <field name="start_time"/>
+                <field name="duration_seconds" widget="float_time"/>
+                <field name="state" widget="badge" decoration-success="state == 'done'" decoration-warning="state == 'done_with_errors'" decoration-danger="state in ('failed', 'draft')" decoration-info="state == 'in_progress'"/>
+                <field name="total_records"/>
+                <field name="success_records"/>
+                <field name="error_records"/>
+                <field name="progress_percent" widget="progressbar"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Job Form View -->
+    <record id="view_migration_job_form" model="ir.ui.view">
+        <field name="name">migration.job.form</field>
+        <field name="model">migration.job</field>
+        <field name="arch" type="xml">
+            <form string="Migration Job Details">
+                <header>
+                    <button name="action_run_migration" type="object" string="Execute / Retry Job" class="btn-primary" icon="fa-play" invisible="state == 'in_progress'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,in_progress,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Configuration">
+                            <field name="template_id"/>
+                            <field name="connection_id"/>
+                            <field name="target_model_name"/>
+                        </group>
+                        <group string="Timing &amp; Duration">
+                            <field name="start_time"/>
+                            <field name="end_time"/>
+                            <field name="duration_seconds"/>
+                        </group>
+                    </group>
+                    <group string="Migration Progress">
+                        <group>
+                            <field name="total_records"/>
+                            <field name="processed_records"/>
+                        </group>
+                        <group>
+                            <field name="success_records" class="text-success"/>
+                            <field name="error_records" class="text-danger"/>
+                        </group>
+                        <field name="progress_percent" widget="progressbar"/>
+                    </group>
+
+                    <group string="Summary Message" invisible="not summary_message">
+                        <field name="summary_message" readonly="1"/>
+                    </group>
+
+                    <notebook>
+                        <page string="Detailed Logs" name="logs">
+                            <field name="log_ids" readonly="1">
+                                <list string="Execution Logs" decoration-danger="log_type == 'error'" decoration-warning="log_type == 'warning'" decoration-info="log_type == 'info'">
+                                    <field name="row_number"/>
+                                    <field name="source_key"/>
+                                    <field name="log_type" widget="badge"/>
+                                    <field name="message"/>
+                                    <field name="target_record_id"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_migration_job" model="ir.actions.act_window">
+        <field name="name">Migration Jobs</field>
+        <field name="res_model">migration.job</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

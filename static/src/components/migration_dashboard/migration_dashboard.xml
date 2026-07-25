@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="data_migration.MigrationStudioDashboard">
+        <div class="o_migration_dashboard h-100 overflow-auto bg-100 p-4">
+            <!-- Header Banner -->
+            <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+                <div>
+                    <h2 class="fw-bold mb-1 text-primary">
+                        <i class="fa fa-cubes me-2"/>Data Migration Studio 19
+                    </h2>
+                    <p class="text-muted mb-0">
+                        Enterprise ETL Engine for CSV, Excel, JSON, Visual FoxPro DBF, ODBC, and SQL Databases.
+                    </p>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary" t-on-click="refreshDashboard">
+                        <i class="fa fa-refresh me-1"/>Refresh
+                    </button>
+                    <button class="btn btn-primary" t-on-click="createNewConnection">
+                        <i class="fa fa-plus me-1"/>New Connection
+                    </button>
+                    <button class="btn btn-success" t-on-click="createNewTemplate">
+                        <i class="fa fa-magic me-1"/>New Template
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Metric Cards -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-4 col-xl-2">
+                    <div class="card shadow-sm border-0 h-100 hover-card cursor-pointer" t-on-click="openConnections">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="text-muted fw-semibold small">Connections</span>
+                                <div class="bg-primary-subtle text-primary p-2 rounded">
+                                    <i class="fa fa-plug fs-5"/>
+                                </div>
+                            </div>
+                            <h3 class="fw-bold mb-0" t-out="state.stats.activeConnections"/>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 col-xl-2">
+                    <div class="card shadow-sm border-0 h-100 hover-card cursor-pointer" t-on-click="openTemplates">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="text-muted fw-semibold small">Templates</span>
+                                <div class="bg-info-subtle text-info p-2 rounded">
+                                    <i class="fa fa-sitemap fs-5"/>
+                                </div>
+                            </div>
+                            <h3 class="fw-bold mb-0" t-out="state.stats.totalTemplates"/>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 col-xl-2">
+                    <div class="card shadow-sm border-0 h-100 hover-card cursor-pointer" t-on-click="openJobs">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="text-muted fw-semibold small">Total Jobs</span>
+                                <div class="bg-warning-subtle text-warning p-2 rounded">
+                                    <i class="fa fa-tasks fs-5"/>
+                                </div>
+                            </div>
+                            <h3 class="fw-bold mb-0" t-out="state.stats.totalJobs"/>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 col-xl-2">
+                    <div class="card shadow-sm border-0 h-100 hover-card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="text-muted fw-semibold small">Migrated Rows</span>
+                                <div class="bg-success-subtle text-success p-2 rounded">
+                                    <i class="fa fa-check-circle fs-5"/>
+                                </div>
+                            </div>
+                            <h3 class="fw-bold mb-0 text-success" t-out="state.stats.successCount"/>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 col-xl-2">
+                    <div class="card shadow-sm border-0 h-100 hover-card cursor-pointer" t-on-click="openAuditLogs">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="text-muted fw-semibold small">Row Errors</span>
+                                <div class="bg-danger-subtle text-danger p-2 rounded">
+                                    <i class="fa fa-exclamation-triangle fs-5"/>
+                                </div>
+                            </div>
+                            <h3 class="fw-bold mb-0 text-danger" t-out="state.stats.errorCount"/>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 col-xl-2">
+                    <div class="card shadow-sm border-0 h-100 hover-card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="text-muted fw-semibold small">Mapped XRefs</span>
+                                <div class="bg-secondary-subtle text-secondary p-2 rounded">
+                                    <i class="fa fa-database fs-5"/>
+                                </div>
+                            </div>
+                            <h3 class="fw-bold mb-0" t-out="state.stats.totalMappedRecords"/>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Migration Executions Table -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0">Recent Migration Jobs</h5>
+                    <button class="btn btn-sm btn-link" t-on-click="openJobs">View All Jobs &amp; Logs</button>
+                </div>
+                <div class="card-body p-0">
+                    <div t-if="state.isLoading" class="p-4 text-center text-muted">
+                        <i class="fa fa-spinner fa-spin fa-2x mb-2"/>
+                        <p class="mb-0">Loading dashboard statistics...</p>
+                    </div>
+                    <div t-elif="state.recentJobs.length === 0" class="p-4 text-center text-muted">
+                        <i class="fa fa-folder-open-o fa-2x mb-2"/>
+                        <p class="mb-0">No migration jobs executed yet. Click "New Connection" or "New Template" to start.</p>
+                    </div>
+                    <div t-else="" class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Reference</th>
+                                    <th>Template</th>
+                                    <th>Status</th>
+                                    <th>Start Time</th>
+                                    <th>Total Records</th>
+                                    <th>Success</th>
+                                    <th>Errors</th>
+                                    <th>Progress</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="state.recentJobs" t-as="job" t-key="job.id">
+                                    <td class="fw-bold text-primary cursor-pointer" t-on-click="() => this.openJobDetail(job.id)">
+                                        <t t-out="job.name"/>
+                                    </td>
+                                    <td>
+                                        <t t-out="job.template_id ? job.template_id[1] : 'N/A'"/>
+                                    </td>
+                                    <td>
+                                        <span t-if="job.state === 'done'" class="badge bg-success">Done</span>
+                                        <span t-elif="job.state === 'done_with_errors'" class="badge bg-warning">Done w/ Errors</span>
+                                        <span t-elif="job.state === 'in_progress'" class="badge bg-info">In Progress</span>
+                                        <span t-elif="job.state === 'failed'" class="badge bg-danger">Failed</span>
+                                        <span t-else="" class="badge bg-secondary"><t t-out="job.state"/></span>
+                                    </td>
+                                    <td>
+                                        <t t-out="job.start_time || 'Not started'"/>
+                                    </td>
+                                    <td t-out="job.total_records"/>
+                                    <td class="text-success fw-bold" t-out="job.success_records"/>
+                                    <td class="text-danger fw-bold" t-out="job.error_records"/>
+                                    <td style="width: 150px;">
+                                        <div class="progress" style="height: 8px;">
+                                            <div class="progress-bar bg-primary" role="progressbar" t-att-style="'width: ' + (job.progress_percent || 0) + '%'"/>
+                                        </div>
+                                        <small class="text-muted"><t t-out="job.progress_percent"/>%</small>
+                                    </td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-primary" t-on-click="() => this.openJobDetail(job.id)">
+                                            <i class="fa fa-eye"/> Details
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </t>
+</templates>

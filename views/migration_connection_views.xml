@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Connection List View -->
+    <record id="view_migration_connection_list" model="ir.ui.view">
+        <field name="name">migration.connection.list</field>
+        <field name="model">migration.connection</field>
+        <field name="arch" type="xml">
+            <list string="Data Connections">
+                <field name="name"/>
+                <field name="conn_type"/>
+                <field name="source_type"/>
+                <field name="state" widget="badge" decoration-success="state == 'connected'" decoration-danger="state == 'error'" decoration-info="state == 'draft'"/>
+                <field name="file_encoding"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Connection Form View -->
+    <record id="view_migration_connection_form" model="ir.ui.view">
+        <field name="name">migration.connection.form</field>
+        <field name="model">migration.connection</field>
+        <field name="arch" type="xml">
+            <form string="Data Connection">
+                <header>
+                    <button name="action_test_connection" type="object" string="Test Connection &amp; Fetch Schema" class="btn-primary" icon="fa-plug"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,connected,error"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Legacy FoxPro Sales Data or Partner CSV"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Source Specification">
+                            <field name="conn_type"/>
+                            <field name="source_type" invisible="conn_type not in ('file_csv', 'file_excel', 'file_json', 'foxpro_dbf')"/>
+                            <field name="file_binary" filename="file_name" invisible="source_type != 'upload' or conn_type not in ('file_csv', 'file_excel', 'file_json', 'foxpro_dbf')"/>
+                            <field name="file_name" invisible="1"/>
+                            <field name="file_path" invisible="source_type != 'path' and conn_type not in ('foxpro_dbf')" placeholder="/var/data/migration/customers.dbf"/>
+                            <field name="file_encoding" invisible="conn_type not in ('file_csv', 'file_json', 'foxpro_dbf')"/>
+                        </group>                        <group string="Format Options" invisible="conn_type not in ('file_csv', 'foxpro_dbf')">
+                            <field name="csv_delimiter" invisible="conn_type != 'file_csv'"/>
+                            <field name="csv_quotechar" invisible="conn_type != 'file_csv'"/>
+                            <field name="dbf_table_name" invisible="conn_type != 'foxpro_dbf'"/>
+                            <field name="dbf_memo_path" invisible="conn_type != 'foxpro_dbf'"/>
+                        </group>
+                    </group>
+
+                    <!-- ODBC Details -->
+                    <group string="ODBC Driver Settings" invisible="conn_type != 'odbc'">
+                        <field name="odbc_connection_string" placeholder="Driver={Visual FoxPro Driver};SourceDB=C:\VFP\Data;SourceType=DBF;"/>
+                        <field name="db_query" placeholder="SELECT * FROM customer_table"/>
+                    </group>
+
+                    <!-- SQL Database Settings -->
+                    <group string="Database Configuration" invisible="conn_type != 'database_sql'">
+                        <group>
+                            <field name="db_type"/>
+                            <field name="db_host"/>
+                            <field name="db_port"/>
+                        </group>
+                        <group>
+                            <field name="db_name"/>
+                            <field name="db_user"/>
+                            <field name="db_password" password="True"/>
+                        </group>
+                        <field name="db_query" placeholder="SELECT * FROM legacy_users"/>
+                    </group>
+
+                    <!-- Odoo RPC Settings -->
+                    <group string="Remote Odoo RPC Instance" invisible="conn_type != 'odoo_rpc'">
+                        <group>
+                            <field name="rpc_url"/>
+                            <field name="rpc_db"/>
+                        </group>
+                        <group>
+                            <field name="rpc_user"/>
+                            <field name="rpc_password" password="True"/>
+                        </group>
+                        <group>
+                            <field name="rpc_model"/>
+                            <field name="rpc_domain"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Schema &amp; Sample Data" name="schema">
+                            <group>
+                                <field name="source_columns" widget="ace" options="{'mode': 'json'}" readonly="1"/>
+                                <field name="preview_data" widget="ace" options="{'mode': 'json'}" readonly="1"/>
+                            </group>
+                        </page>
+                        <page string="Connection Error Log" name="error" invisible="not last_error">
+                            <field name="last_error" readonly="1" class="text-danger"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_migration_connection" model="ir.actions.act_window">
+        <field name="name">Data Connections</field>
+        <field name="res_model">migration.connection</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first Data Connection!
+            </p>
+            <p>
+                Connect to CSV, Excel, JSON, Visual FoxPro DBF files, ODBC drivers, or SQL databases.
+            </p>
+        </field>
+    </record>
+</odoo>

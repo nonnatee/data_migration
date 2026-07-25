@@ -1,0 +1,13 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_migration_connection_user,migration.connection.user,model_migration_connection,group_migration_user,1,1,1,0
+access_migration_connection_manager,migration.connection.manager,model_migration_connection,group_migration_manager,1,1,1,1
+access_migration_template_user,migration.template.user,model_migration_template,group_migration_user,1,1,1,0
+access_migration_template_manager,migration.template.manager,model_migration_template,group_migration_manager,1,1,1,1
+access_migration_mapping_line_user,migration.mapping.line.user,model_migration_mapping_line,group_migration_user,1,1,1,0
+access_migration_mapping_line_manager,migration.mapping.line.manager,model_migration_mapping_line,group_migration_manager,1,1,1,1
+access_migration_job_user,migration.job.user,model_migration_job,group_migration_user,1,1,1,0
+access_migration_job_manager,migration.job.manager,model_migration_job,group_migration_manager,1,1,1,1
+access_migration_log_user,migration.log.user,model_migration_log,group_migration_user,1,0,0,0
+access_migration_log_manager,migration.log.manager,model_migration_log,group_migration_manager,1,1,1,1
+access_migration_record_map_user,migration.record.map.user,model_migration_record_map,group_migration_user,1,1,1,0
+access_migration_record_map_manager,migration.record.map.manager,model_migration_record_map,group_migration_manager,1,1,1,1

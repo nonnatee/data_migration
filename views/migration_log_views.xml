@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_migration_log_list" model="ir.ui.view">
+        <field name="name">migration.log.list</field>
+        <field name="model">migration.log</field>
+        <field name="arch" type="xml">
+            <list string="Migration Logs" decoration-danger="log_type == 'error'" decoration-warning="log_type == 'warning'">
+                <field name="job_id"/>
+                <field name="template_id"/>
+                <field name="row_number"/>
+                <field name="source_key"/>
+                <field name="log_type" widget="badge"/>
+                <field name="message"/>
+                <field name="target_record_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_migration_log_form" model="ir.ui.view">
+        <field name="name">migration.log.form</field>
+        <field name="model">migration.log</field>
+        <field name="arch" type="xml">
+            <form string="Log Entry Detail">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="job_id"/>
+                            <field name="template_id"/>
+                            <field name="log_type"/>
+                        </group>
+                        <group>
+                            <field name="row_number"/>
+                            <field name="source_key"/>
+                            <field name="target_record_id"/>
+                        </group>
+                    </group>
+                    <group string="Message">
+                        <field name="message" readonly="1"/>
+                    </group>
+                    <group string="Error Traceback" invisible="not error_traceback">
+                        <field name="error_traceback" widget="ace" readonly="1"/>
+                    </group>
+                    <group string="Raw Source Data" invisible="not raw_data">
+                        <field name="raw_data" widget="ace" options="{'mode': 'json'}" readonly="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_migration_log" model="ir.actions.act_window">
+        <field name="name">Migration Audit Logs</field>
+        <field name="res_model">migration.log</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>
