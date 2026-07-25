@@ -16,7 +16,7 @@
         <record id="group_migration_manager" model="res.groups">
             <field name="name">Data Migration / Manager</field>
             <field name="implied_ids" eval="[(4, ref('group_migration_user'))]"/>
-            <field name="users" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
+            <field name="user_ids" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
             <field name="comment">Full admin access to edit connection credentials, Python code mappings, and purge log tables.</field>
         </record>
     </data>

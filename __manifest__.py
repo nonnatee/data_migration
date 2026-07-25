@@ -21,6 +21,7 @@ Key Features:
     'author': 'Nonnatee Kanjana',
     'website': 'https://odoo.ps-groups.com',
     'license': 'LGPL-3',
+    'icon': '/data_migration/static/description/icon.png',
     'depends': ['base', 'web'],
     'data': [
         'security/data_migration_security.xml',
