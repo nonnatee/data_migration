@@ -18,8 +18,8 @@ Key Features:
 * **Savepoint Error Isolation**: Chunked batch processing with `with self.env.cr.savepoint():` per row, preventing single-record failures from aborting the entire run.
 * **Interactive OWL 3 Dashboard**: Live job statistics, failure distribution analysis, error log search, and CSV export.
     """,
-    'author': 'Custom Addons Development Team',
-    'website': 'https://www.example.com',
+    'author': 'Nonnatee Kanjana',
+    'website': 'https://odoo.ps-groups.com',
     'license': 'LGPL-3',
     'depends': ['base', 'web'],
     'data': [

@@ -8,15 +8,13 @@
         </record>
 
         <record id="group_migration_user" model="res.groups">
-            <field name="name">User</field>
-            <field name="category_id" ref="module_category_data_migration"/>
+            <field name="name">Data Migration / User</field>
             <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
             <field name="comment">Standard users can view migration templates, connections, and launch jobs.</field>
         </record>
 
         <record id="group_migration_manager" model="res.groups">
-            <field name="name">Manager</field>
-            <field name="category_id" ref="module_category_data_migration"/>
+            <field name="name">Data Migration / Manager</field>
             <field name="implied_ids" eval="[(4, ref('group_migration_user'))]"/>
             <field name="users" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
             <field name="comment">Full admin access to edit connection credentials, Python code mappings, and purge log tables.</field>
