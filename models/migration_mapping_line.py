@@ -53,6 +53,13 @@ class MigrationMappingLine(models.Model):
         help='Available variables: value, record (dict), env, default'
     )
 
+    transform_ids = fields.One2many(
+        'migration.mapping.transform',
+        'line_id',
+        string='Transformation Pipeline',
+        copy=True
+    )
+
     # Relational Lookup Configuration (For Many2one / Many2many)
     lookup_strategy = fields.Selection([
         ('xml_id', 'Search by XML ID (External ID)'),
@@ -78,31 +85,80 @@ class MigrationMappingLine(models.Model):
         self.ensure_one()
         val = raw_value
 
-        # Step 1: Transformation Logic
-        if self.transform_type == 'default':
-            val = self.default_value
-        elif self.transform_type == 'value_map' and self.value_mapping_json:
-            try:
-                dict_map = json.loads(self.value_mapping_json or '{}')
-                val = dict_map.get(str(val), dict_map.get(val, self.default_value or val))
-            except Exception as e:
-                _logger.warning("Failed to parse value_mapping_json on line ID %s: %s", self.id, e)
-        elif self.transform_type == 'python_expr' and self.python_code:
-            eval_ctx = {
-                'value': raw_value,
-                'record': source_record,
-                'env': self.env,
-                'default': self.default_value,
-            }
-            try:
-                val = eval(self.python_code, eval_ctx)
-            except Exception as e:
-                _logger.error("Python mapping expression error on line ID %s: %s", self.id, e)
-                raise UserError(_("Error executing Python expression for field '%s': %s") % (self.target_field_name, str(e)))
+        # Step 1: Multi-Step Pipeline Transformations
+        if self.transform_ids:
+            for step in self.transform_ids.sorted('sequence'):
+                val = step.apply_transform(val, record_ctx=source_record)
+        else:
+            # Legacy single-step fallback
+            if self.transform_type == 'default':
+                val = self.default_value
+            elif self.transform_type == 'value_map' and self.value_mapping_json:
+                try:
+                    dict_map = json.loads(self.value_mapping_json or '{}')
+                    val = dict_map.get(str(val), dict_map.get(val, self.default_value or val))
+                except Exception as e:
+                    _logger.warning("Failed to parse value_mapping_json on line ID %s: %s", self.id, e)
+            elif self.transform_type == 'python_expr' and self.python_code:
+                eval_ctx = {
+                    'value': raw_value,
+                    'record': source_record,
+                    'env': self.env,
+                    'default': self.default_value,
+                }
+                try:
+                    val = eval(self.python_code, eval_ctx)
+                except Exception as e:
+                    _logger.error("Python mapping expression error on line ID %s: %s", self.id, e)
+                    raise UserError(_("Error executing Python expression for field '%s': %s") % (self.target_field_name, str(e)))
 
         # Fallback if empty
         if (val is None or val == '') and self.default_value:
             val = self.default_value
+
+    def action_test_pipeline(self, sample_value):
+        """Returns step-by-step transformation traces for frontend live sample preview."""
+        self.ensure_one()
+        current_val = sample_value
+        traces = []
+        
+        if self.transform_ids:
+            for idx, step in enumerate(self.transform_ids.sorted('sequence'), 1):
+                prev_val = current_val
+                try:
+                    current_val = step.apply_transform(current_val, record_ctx={})
+                    status = 'ok'
+                    err = False
+                except Exception as e:
+                    status = 'error'
+                    err = str(e)
+
+                traces.append({
+                    'step': idx,
+                    'name': step.name or f"Step {idx}",
+                    'category': step.transform_category,
+                    'input': prev_val,
+                    'output': current_val,
+                    'status': status,
+                    'error': err,
+                })
+        else:
+            # Fallback direct test
+            traces.append({
+                'step': 1,
+                'name': 'Direct Mapping',
+                'category': 'direct',
+                'input': sample_value,
+                'output': sample_value,
+                'status': 'ok',
+                'error': False,
+            })
+
+        return {
+            'input': sample_value,
+            'final_output': current_val,
+            'traces': traces,
+        }
 
         if val is None or val == '':
             return False

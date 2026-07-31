@@ -108,3 +108,166 @@ class MigrationTemplate(models.Model):
                 'default_connection_id': self.connection_id.id,
             }
         }
+
+    def action_get_visual_mapping_data(self):
+        """Fetch visual diagram schema data for sources, targets, and active connections."""
+        self.ensure_one()
+        import json
+        
+        # 1. Source columns from connection
+        source_cols = []
+        if self.connection_id.source_columns:
+            try:
+                source_cols = json.loads(self.connection_id.source_columns)
+            except Exception:
+                source_cols = []
+        
+        # 2. Target fields from model
+        target_fields = []
+        if self.target_model_id:
+            fields_rec = self.env['ir.model.fields'].search([
+                ('model_id', '=', self.target_model_id.id),
+                ('store', '=', True),
+                ('readonly', '=', False),
+            ], order='name asc')
+            for f in fields_rec:
+                target_fields.append({
+                    'id': f.id,
+                    'name': f.name,
+                    'field_description': f.field_description,
+                    'ttype': f.ttype,
+                    'relation': f.relation or '',
+                    'required': f.required,
+                })
+
+        # 3. Existing mapping lines
+        lines = []
+        for l in self.mapping_line_ids:
+            transforms = []
+            for t in l.transform_ids.sorted('sequence'):
+                transforms.append({
+                    'id': t.id,
+                    'sequence': t.sequence,
+                    'transform_category': t.transform_category,
+                    'cleansing_type': t.cleansing_type,
+                    'pad_char': t.pad_char,
+                    'pad_count': t.pad_count,
+                    'regex_pattern': t.regex_pattern,
+                    'regex_replace': t.regex_replace,
+                    'input_date_format': t.input_date_format,
+                    'output_date_format': t.output_date_format,
+                    'tz_offset_hours': t.tz_offset_hours,
+                    'unit_type': t.unit_type,
+                    'source_unit': t.source_unit,
+                    'target_unit': t.target_unit,
+                    'custom_scale_ratio': t.custom_scale_ratio,
+                    'target_type': t.target_type,
+                    'value_mapping_json': t.value_mapping_json,
+                    'python_code': t.python_code,
+                    'default_fallback': t.default_fallback,
+                    'name': t.name,
+                })
+
+            lines.append({
+                'id': l.id,
+                'source_field': l.source_field,
+                'target_field_id': l.target_field_id.id,
+                'target_field_name': l.target_field_name,
+                'target_field_ttype': l.target_field_ttype,
+                'is_key_field': l.is_key_field,
+                'transform_type': l.transform_type,
+                'default_value': l.default_value,
+                'lookup_strategy': l.lookup_strategy,
+                'lookup_field_id': l.lookup_field_id.id if l.lookup_field_id else False,
+                'transforms': transforms,
+            })
+
+        return {
+            'template_id': self.id,
+            'template_name': self.name,
+            'connection_name': self.connection_id.name,
+            'target_model_name': self.target_model_name,
+            'source_columns': source_cols,
+            'target_fields': target_fields,
+            'mapping_lines': lines,
+        }
+
+    def action_save_visual_mapping(self, mapping_data):
+        """Saves updated mappings and transformation steps from visual diagram interface."""
+        self.ensure_one()
+        # mapping_data is list of mapping lines
+        LineObj = self.env['migration.mapping.line']
+        TransformObj = self.env['migration.mapping.transform']
+
+        existing_line_ids = set(self.mapping_line_ids.ids)
+        kept_line_ids = set()
+
+        for item in mapping_data:
+            line_id = item.get('id')
+            line_vals = {
+                'template_id': self.id,
+                'source_field': item.get('source_field'),
+                'target_field_id': item.get('target_field_id'),
+                'is_key_field': item.get('is_key_field', False),
+                'transform_type': item.get('transform_type', 'direct'),
+                'default_value': item.get('default_value', ''),
+                'lookup_strategy': item.get('lookup_strategy', 'field_search'),
+                'lookup_field_id': item.get('lookup_field_id', False),
+            }
+
+            if line_id and isinstance(line_id, int):
+                line_rec = LineObj.browse(line_id)
+                line_rec.write(line_vals)
+                kept_line_ids.add(line_id)
+            else:
+                line_rec = LineObj.create(line_vals)
+                kept_line_ids.add(line_rec.id)
+
+            # Update transforms for this line
+            transforms_data = item.get('transforms', [])
+            existing_t_ids = set(line_rec.transform_ids.ids)
+            kept_t_ids = set()
+
+            for seq, t_item in enumerate(transforms_data, 1):
+                t_id = t_item.get('id')
+                t_vals = {
+                    'line_id': line_rec.id,
+                    'sequence': seq * 10,
+                    'transform_category': t_item.get('transform_category', 'cleansing'),
+                    'cleansing_type': t_item.get('cleansing_type', 'trim'),
+                    'pad_char': t_item.get('pad_char', '0'),
+                    'pad_count': t_item.get('pad_count', 10),
+                    'regex_pattern': t_item.get('regex_pattern', ''),
+                    'regex_replace': t_item.get('regex_replace', ''),
+                    'input_date_format': t_item.get('input_date_format', '%Y-%m-%d'),
+                    'output_date_format': t_item.get('output_date_format', '%Y-%m-%d'),
+                    'tz_offset_hours': t_item.get('tz_offset_hours', 0.0),
+                    'unit_type': t_item.get('unit_type', 'mass'),
+                    'source_unit': t_item.get('source_unit', 'kg'),
+                    'target_unit': t_item.get('target_unit', 'lb'),
+                    'custom_scale_ratio': t_item.get('custom_scale_ratio', 1.0),
+                    'target_type': t_item.get('target_type', 'string'),
+                    'value_mapping_json': t_item.get('value_mapping_json', '{}'),
+                    'python_code': t_item.get('python_code', ''),
+                    'default_fallback': t_item.get('default_fallback', ''),
+                }
+
+                if t_id and isinstance(t_id, int):
+                    t_rec = TransformObj.browse(t_id)
+                    t_rec.write(t_vals)
+                    kept_t_ids.add(t_id)
+                else:
+                    t_rec = TransformObj.create(t_vals)
+                    kept_t_ids.add(t_rec.id)
+
+            # Unlink removed transforms
+            removed_t = existing_t_ids - kept_t_ids
+            if removed_t:
+                TransformObj.browse(list(removed_t)).unlink()
+
+        # Unlink removed lines
+        removed_lines = existing_line_ids - kept_line_ids
+        if removed_lines:
+            LineObj.browse(list(removed_lines)).unlink()
+
+        return True

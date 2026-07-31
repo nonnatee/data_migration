@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Mapping Transform List View -->
+    <record id="view_migration_mapping_transform_list" model="ir.ui.view">
+        <field name="name">migration.mapping.transform.list</field>
+        <field name="model">migration.mapping.transform</field>
+        <field name="arch" type="xml">
+            <list string="Transformation Steps">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="transform_category"/>
+                <field name="cleansing_type" invisible="transform_category != 'cleansing'"/>
+                <field name="unit_type" invisible="transform_category != 'unit_conversion'"/>
+                <field name="target_type" invisible="transform_category != 'type_conversion'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Mapping Transform Form View -->
+    <record id="view_migration_mapping_transform_form" model="ir.ui.view">
+        <field name="name">migration.mapping.transform.form</field>
+        <field name="model">migration.mapping.transform</field>
+        <field name="arch" type="xml">
+            <form string="Transformation Step">
+                <sheet>
+                    <group>
+                        <group string="Step Configuration">
+                            <field name="sequence"/>
+                            <field name="transform_category"/>
+                            <field name="default_fallback"/>
+                        </group>
+                    </group>
+                    
+                    <!-- 1. Cleansing -->
+                    <group string="Data Cleansing Settings" invisible="transform_category != 'cleansing'">
+                        <field name="cleansing_type"/>
+                        <field name="pad_char" invisible="cleansing_type not in ('pad_left', 'pad_right')"/>
+                        <field name="pad_count" invisible="cleansing_type not in ('pad_left', 'pad_right')"/>
+                        <field name="regex_pattern" invisible="cleansing_type != 'regex'"/>
+                        <field name="regex_replace" invisible="cleansing_type != 'regex'"/>
+                    </group>
+
+                    <!-- 2. Date Formatting -->
+                    <group string="Date &amp; Time Formatting Settings" invisible="transform_category != 'date_format'">
+                        <field name="input_date_format"/>
+                        <field name="output_date_format"/>
+                        <field name="tz_offset_hours"/>
+                    </group>
+
+                    <!-- 3. Unit Conversion -->
+                    <group string="Unit Conversion Settings" invisible="transform_category != 'unit_conversion'">
+                        <field name="unit_type"/>
+                        <field name="source_unit" invisible="unit_type == 'custom'"/>
+                        <field name="target_unit" invisible="unit_type == 'custom'"/>
+                        <field name="custom_scale_ratio" invisible="unit_type != 'custom'"/>
+                    </group>
+
+                    <!-- 4. Type Conversion -->
+                    <group string="Data Type Casting" invisible="transform_category != 'type_conversion'">
+                        <field name="target_type"/>
+                    </group>
+
+                    <!-- 5. Value Map -->
+                    <group string="Value Mapping Dictionary" invisible="transform_category != 'value_map'">
+                        <field name="value_mapping_json" widget="ace" options="{'mode': 'json'}"/>
+                    </group>
+
+                    <!-- 6. Python Expression -->
+                    <group string="Python Code Snippet" invisible="transform_category != 'python_expr'">
+                        <field name="python_code" widget="ace" options="{'mode': 'python'}"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>

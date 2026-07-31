@@ -10,4 +10,5 @@ access_migration_job_manager,migration.job.manager,model_migration_job,group_mig
 access_migration_log_user,migration.log.user,model_migration_log,group_migration_user,1,0,0,0
 access_migration_log_manager,migration.log.manager,model_migration_log,group_migration_manager,1,1,1,1
 access_migration_record_map_user,migration.record.map.user,model_migration_record_map,group_migration_user,1,1,1,0
-access_migration_record_map_manager,migration.record.map.manager,model_migration_record_map,group_migration_manager,1,1,1,1
+access_migration_mapping_transform_user,migration.mapping.transform.user,model_migration_mapping_transform,group_migration_user,1,1,1,0
+access_migration_mapping_transform_manager,migration.mapping.transform.manager,model_migration_mapping_transform,group_migration_manager,1,1,1,1

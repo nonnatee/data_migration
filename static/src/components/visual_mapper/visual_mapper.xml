@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="utf-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="data_migration.VisualMapperWidget">
+        <div class="o_visual_mapper_container d-flex flex-column h-100 position-relative" t-ref="mapperContainer">
+            
+            <!-- Top Control Bar -->
+            <div class="o_visual_mapper_header d-flex align-items-center justify-content-between px-3 py-2 border-bottom bg-view shadow-sm">
+                <div class="d-flex align-items-center gap-3">
+                    <h5 class="mb-0 fw-bold text-primary">
+                        <i class="fa fa-sitemap me-2"/>Visual Schema &amp; Transformation Mapper
+                    </h5>
+                    <span t-if="state.templateName" class="badge bg-info text-dark px-2 py-1 fs-6">
+                        <i class="fa fa-database me-1"/><t t-out="state.connectionName"/> &amp;rarr; <t t-out="state.targetModelName"/>
+                    </span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" t-on-click="loadData">
+                        <i class="fa fa-refresh me-1"/>Reload Schema
+                    </button>
+                    <button class="btn btn-sm btn-primary fw-bold" t-on-click="saveMappings" t-att-disabled="state.isSaving">
+                        <i t-if="!state.isSaving" class="fa fa-save me-1"/>
+                        <i t-if="state.isSaving" class="fa fa-spinner fa-spin me-1"/>
+                        Save Field Mappings
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div t-if="state.isLoading" class="d-flex flex-column align-items-center justify-content-center flex-grow-1 p-5">
+                <div class="spinner-border text-primary me-2" role="status"/>
+                <p class="mt-3 text-muted">Introspecting source schema and loading target model fields...</p>
+            </div>
+
+            <!-- Main 3-Column Mapper Area -->
+            <div t-if="!state.isLoading" class="o_visual_mapper_body d-flex flex-grow-1 position-relative overflow-hidden">
+                
+                <!-- SVG Bezier Connector Canvas -->
+                <svg class="o_visual_mapper_svg position-absolute top-0 start-0 w-100 h-100 pe-none" t-ref="svgCanvas" style="z-index: 10;"></svg>
+
+                <!-- Left Column: Sources Tree -->
+                <div class="o_visual_mapper_col o_sources_col border-end bg-light d-flex flex-column flex-basis-30" style="min-width: 280px; flex: 1;">
+                    <div class="p-3 border-bottom bg-view d-flex align-items-center justify-content-between">
+                        <span class="fw-bold text-uppercase fs-7 text-muted">
+                            <i class="fa fa-folder-open me-1"/> Sources (<t t-out="filteredSourceColumns.length"/>)
+                        </span>
+                        <div class="input-group input-group-sm w-50">
+                            <span class="input-group-text"><i class="fa fa-search"/></span>
+                            <input type="text" class="form-control" placeholder="Search source..." t-model="state.sourceSearch"/>
+                        </div>
+                    </div>
+                    <div class="o_tree_list p-2 overflow-auto flex-grow-1">
+                        <t t-if="filteredSourceColumns.length == 0">
+                            <div class="text-muted text-center p-4 fs-7">No source columns found. Click reload or test connection first.</div>
+                        </t>
+                        <t t-foreach="filteredSourceColumns" t-as="col" t-key="col">
+                            <div t-attf-class="o_tree_item d-flex align-items-center justify-content-between p-2 mb-1 rounded cursor-pointer border #{state.selectedSourceCol == col ? 'bg-primary text-white border-primary shadow-sm' : 'bg-view border-light hover-bg-light'}"
+                                 t-on-click="() => this.selectSource(col)">
+                                <div class="d-flex align-items-center text-truncate me-2">
+                                    <i class="fa fa-file-code-o me-2 opacity-75"/>
+                                    <span class="fw-semibold text-truncate" t-out="col"/>
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span t-if="isSourceMapped(col)" class="badge bg-success rounded-pill px-2 py-1" style="font-size: 10px;">Mapped</span>
+                                    <div class="o_connector_port source_port bg-info rounded-circle border border-white" 
+                                         t-att-data-source-port="col" 
+                                         style="width: 12px; height: 12px; transform: translateX(6px);" 
+                                         title="Click or drag to connect"/>
+                                </div>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+
+                <!-- Center Column: Target Fields -->
+                <div class="o_visual_mapper_col o_target_col border-end bg-light d-flex flex-column flex-basis-35" style="min-width: 320px; flex: 1.2;">
+                    <div class="p-3 border-bottom bg-view d-flex align-items-center justify-content-between">
+                        <span class="fw-bold text-uppercase fs-7 text-muted">
+                            <i class="fa fa-cube me-1"/> Target Model (<t t-out="filteredTargetFields.length"/> Fields)
+                        </span>
+                        <div class="input-group input-group-sm w-50">
+                            <span class="input-group-text"><i class="fa fa-search"/></span>
+                            <input type="text" class="form-control" placeholder="Search target..." t-model="state.targetSearch"/>
+                        </div>
+                    </div>
+                    <div class="o_tree_list p-2 overflow-auto flex-grow-1">
+                        <t t-foreach="filteredTargetFields" t-as="f" t-key="f.id">
+                            <div t-attf-class="o_tree_item d-flex align-items-center justify-content-between p-2 mb-1 rounded cursor-pointer border #{activeLine &amp;&amp; activeLine.target_field_id == f.id ? 'bg-primary text-white border-primary shadow-sm' : 'bg-view border-light hover-bg-light'}"
+                                 t-on-click="() => this.selectTarget(f)">
+                                <div class="d-flex align-items-center gap-2 text-truncate">
+                                    <div class="o_connector_port target_port bg-primary rounded-circle border border-white" 
+                                         t-att-data-target-port="f.id" 
+                                         style="width: 12px; height: 12px; transform: translateX(-6px);" 
+                                         title="Click to map"/>
+                                    <i t-attf-class="fa #{f.required ? 'fa-asterisk text-danger' : 'fa-tag'} fs-7 opacity-75"/>
+                                    <div class="text-truncate">
+                                        <div class="fw-semibold text-truncate" t-out="f.field_description || f.name"/>
+                                        <div class="fs-8 text-muted font-monospace"><t t-out="f.name"/> (<t t-out="f.ttype"/>)</div>
+                                    </div>
+                                </div>
+                                <span t-if="isTargetMapped(f.id)" class="badge bg-success rounded-pill px-2 py-1" style="font-size: 10px;">Mapped</span>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+
+                <!-- Right Column: Mapping Details & Pipeline Sidebar -->
+                <div class="o_visual_mapper_col o_details_col bg-view d-flex flex-column flex-basis-35 overflow-auto" style="min-width: 340px; flex: 1.2;">
+                    
+                    <t t-if="!activeLine">
+                        <div class="d-flex flex-column align-items-center justify-content-center flex-grow-1 p-4 text-center text-muted">
+                            <i class="fa fa-hand-o-left fa-3x mb-3 text-secondary opacity-50"/>
+                            <h5>No Field Mapping Selected</h5>
+                            <p class="fs-7">Select a source column on the left and a target field in the middle to create or inspect field transformation rules.</p>
+                        </div>
+                    </t>
+
+                    <t t-if="activeLine">
+                        <!-- Mapping Header Panel -->
+                        <div class="p-3 border-bottom bg-light">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="fw-bold text-uppercase fs-7 text-muted">
+                                    <i class="fa fa-sliders me-1"/> Mapping Details
+                                </span>
+                                <button class="btn btn-sm btn-outline-danger py-0 px-2" t-on-click="() => this.deleteLine(state.selectedLineIndex)" title="Delete Mapping Line">
+                                    <i class="fa fa-trash me-1"/>Remove Link
+                                </button>
+                            </div>
+                            
+                            <div class="card p-2 border-0 bg-view shadow-sm mb-2">
+                                <div class="d-flex align-items-center justify-content-between fs-7">
+                                    <span class="badge bg-secondary text-white font-monospace"><t t-out="activeLine.source_field"/></span>
+                                    <i class="fa fa-arrow-right text-primary"/>
+                                    <span class="badge bg-primary text-white font-monospace"><t t-out="activeLine.target_field_name"/></span>
+                                </div>
+                            </div>
+
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="keyFieldCheck" t-model="activeLine.is_key_field"/>
+                                <label class="form-check-input-label fw-semibold fs-7" for="keyFieldCheck">
+                                    Use as Unique Match Key
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Transformation Pipeline Builder -->
+                        <div class="p-3 border-bottom flex-grow-1">
+                            <div class="d-flex align-items-center justify-content-between mb-3">
+                                <h6 class="fw-bold mb-0 text-dark">
+                                    <i class="fa fa-cogs text-primary me-1"/> Transformation Pipeline
+                                </h6>
+                                <span class="badge bg-info text-dark rounded-pill"><t t-out="(activeLine.transforms || []).length"/> Steps</span>
+                            </div>
+
+                            <!-- List of Pipeline Steps -->
+                            <div class="o_pipeline_steps mb-3">
+                                <t t-if="!activeLine.transforms || activeLine.transforms.length == 0">
+                                    <div class="alert alert-warning py-2 px-3 fs-7 mb-2">
+                                        <i class="fa fa-info-circle me-1"/> Direct mapping: raw source value will be copied without conversion.
+                                    </div>
+                                </t>
+
+                                <t t-foreach="activeLine.transforms || []" t-as="step" t-key="step.id || step_index">
+                                    <div class="card mb-2 border shadow-sm rounded">
+                                        <div class="card-header p-2 bg-light d-flex align-items-center justify-content-between fs-7">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="badge bg-dark text-white rounded-circle"><t t-out="step_index + 1"/></span>
+                                                <span class="fw-bold text-dark"><t t-out="step.name"/></span>
+                                            </div>
+                                            <button class="btn btn-link btn-sm text-danger p-0" t-on-click="() => this.removeTransformStep(step_index)">
+                                                <i class="fa fa-times"/>
+                                            </button>
+                                        </div>
+                                        <div class="card-body p-2 fs-7">
+                                            <!-- Category specific options -->
+                                            <t t-if="step.transform_category == 'cleansing'">
+                                                <div class="mb-2">
+                                                    <label class="form-label mb-1">Cleansing Operation</label>
+                                                    <select class="form-select form-select-sm" t-model="step.cleansing_type">
+                                                        <option value="trim">Trim Whitespace</option>
+                                                        <option value="upper">UPPERCASE</option>
+                                                        <option value="lower">lowercase</option>
+                                                        <option value="capitalize">Capitalize First Letter</option>
+                                                        <option value="title">Title Case</option>
+                                                        <option value="pad_left">Pad Left</option>
+                                                        <option value="pad_right">Pad Right</option>
+                                                        <option value="regex">Regex Search &amp; Replace</option>
+                                                        <option value="strip_html">Strip HTML Tags</option>
+                                                        <option value="strip_non_numeric">Strip Non-Numeric</option>
+                                                    </select>
+                                                </div>
+                                                <t t-if="step.cleansing_type == 'pad_left' || step.cleansing_type == 'pad_right'">
+                                                    <div class="row g-2">
+                                                        <div class="col-6">
+                                                            <label class="form-label mb-1">Pad Char</label>
+                                                            <input type="text" class="form-control form-control-sm" t-model="step.pad_char"/>
+                                                        </div>
+                                                        <div class="col-6">
+                                                            <label class="form-label mb-1">Total Len</label>
+                                                            <input type="number" class="form-control form-control-sm" t-model="step.pad_count"/>
+                                                        </div>
+                                                    </div>
+                                                </t>
+                                                <t t-if="step.cleansing_type == 'regex'">
+                                                    <div class="row g-2">
+                                                        <div class="col-6">
+                                                            <label class="form-label mb-1">Regex Pattern</label>
+                                                            <input type="text" class="form-control form-control-sm font-monospace" t-model="step.regex_pattern"/>
+                                                        </div>
+                                                        <div class="col-6">
+                                                            <label class="form-label mb-1">Replace With</label>
+                                                            <input type="text" class="form-control form-control-sm font-monospace" t-model="step.regex_replace"/>
+                                                        </div>
+                                                    </div>
+                                                </t>
+                                            </t>
+
+                                            <t t-if="step.transform_category == 'date_format'">
+                                                <div class="row g-2 mb-2">
+                                                    <div class="col-6">
+                                                        <label class="form-label mb-1">Input Format</label>
+                                                        <input type="text" class="form-control form-control-sm font-monospace" t-model="step.input_date_format"/>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <label class="form-label mb-1">Target Format</label>
+                                                        <input type="text" class="form-control form-control-sm font-monospace" t-model="step.output_date_format"/>
+                                                    </div>
+                                                </div>
+                                            </t>
+
+                                            <t t-if="step.transform_category == 'unit_conversion'">
+                                                <div class="mb-2">
+                                                    <label class="form-label mb-1">Unit Category</label>
+                                                    <select class="form-select form-select-sm" t-model="step.unit_type">
+                                                        <option value="mass">Mass / Weight (kg, lb, oz)</option>
+                                                        <option value="length">Length / Distance (m, km, ft)</option>
+                                                        <option value="volume">Volume (l, ml, gal)</option>
+                                                        <option value="temp">Temperature (C, F, K)</option>
+                                                        <option value="custom">Custom Scale Multiplier</option>
+                                                    </select>
+                                                </div>
+                                                <t t-if="step.unit_type != 'custom'">
+                                                    <div class="row g-2">
+                                                        <div class="col-6">
+                                                            <label class="form-label mb-1">From Unit</label>
+                                                            <select class="form-select form-select-sm" t-model="step.source_unit">
+                                                                <option value="kg">kg</option>
+                                                                <option value="g">g</option>
+                                                                <option value="lb">lb</option>
+                                                                <option value="oz">oz</option>
+                                                                <option value="m">m</option>
+                                                                <option value="ft">ft</option>
+                                                                <option value="l">l</option>
+                                                                <option value="gal">gal</option>
+                                                                <option value="C">°C</option>
+                                                                <option value="F">°F</option>
+                                                            </select>
+                                                        </div>
+                                                        <div class="col-6">
+                                                            <label class="form-label mb-1">To Unit</label>
+                                                            <select class="form-select form-select-sm" t-model="step.target_unit">
+                                                                <option value="kg">kg</option>
+                                                                <option value="g">g</option>
+                                                                <option value="lb">lb</option>
+                                                                <option value="oz">oz</option>
+                                                                <option value="m">m</option>
+                                                                <option value="ft">ft</option>
+                                                                <option value="l">l</option>
+                                                                <option value="gal">gal</option>
+                                                                <option value="C">°C</option>
+                                                                <option value="F">°F</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </t>
+                                                <t t-if="step.unit_type == 'custom'">
+                                                    <label class="form-label mb-1">Multiplier Scale Ratio</label>
+                                                    <input type="number" step="0.0001" class="form-control form-control-sm" t-model="step.custom_scale_ratio"/>
+                                                </t>
+                                            </t>
+
+                                            <t t-if="step.transform_category == 'type_conversion'">
+                                                <label class="form-label mb-1">Target Data Type</label>
+                                                <select class="form-select form-select-sm" t-model="step.target_type">
+                                                    <option value="string">String / Text</option>
+                                                    <option value="integer">Integer</option>
+                                                    <option value="float">Float / Decimal</option>
+                                                    <option value="boolean">Boolean</option>
+                                                    <option value="date">Date</option>
+                                                </select>
+                                            </t>
+                                        </div>
+                                    </div>
+                                </t>
+                            </div>
+
+                            <!-- Add Step Selector -->
+                            <div class="input-group input-group-sm">
+                                <select class="form-select" t-model="state.newStepCategory">
+                                    <option value="cleansing">Data Cleansing</option>
+                                    <option value="date_format">Date &amp; Time Formatting</option>
+                                    <option value="unit_conversion">Unit Conversion</option>
+                                    <option value="type_conversion">Data Type Conversion</option>
+                                    <option value="value_map">Value Mapping Table</option>
+                                    <option value="python_expr">Python Expression</option>
+                                </select>
+                                <button class="btn btn-outline-primary" t-on-click="addTransformStep">
+                                    <i class="fa fa-plus me-1"/>Add Step
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Live Sample Transformation Test Preview Sandbox -->
+                        <div class="p-3 bg-light border-top">
+                            <h6 class="fw-bold mb-2 text-dark">
+                                <i class="fa fa-flask text-warning me-1"/> Live Pipeline Preview
+                            </h6>
+                            <div class="input-group input-group-sm mb-2">
+                                <input type="text" class="form-control" placeholder="Type sample raw value..." t-model="state.sampleInput"/>
+                                <button class="btn btn-info text-white" t-on-click="testLiveSample" t-att-disabled="state.isTestingSample">
+                                    <i t-if="!state.isTestingSample" class="fa fa-play me-1"/>
+                                    <i t-if="state.isTestingSample" class="fa fa-spinner fa-spin me-1"/>
+                                    Test
+                                </button>
+                            </div>
+
+                            <t t-if="state.sampleResult">
+                                <div class="card p-2 bg-dark text-white font-monospace fs-8 rounded mb-2">
+                                    <div class="text-muted border-bottom border-secondary pb-1 mb-1">Execution Trace:</div>
+                                    <t t-foreach="state.sampleResult.traces" t-as="tr" t-key="tr_index">
+                                        <div class="d-flex align-items-center justify-content-between mb-1">
+                                            <span>#<t t-out="tr.step"/> <t t-out="tr.name"/>:</span>
+                                            <span class="text-warning"><t t-out="tr.output"/></span>
+                                        </div>
+                                    </t>
+                                    <div class="border-top border-secondary pt-1 mt-1 text-success fw-bold">
+                                        Final Output: <t t-out="state.sampleResult.final_output"/>
+                                    </div>
+                                </div>
+                            </t>
+                        </div>
+                    </t>
+                </div>
+            </div>
+        </div>
+    </t>
+
+</templates>

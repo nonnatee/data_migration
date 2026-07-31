@@ -1,0 +1,54 @@
+.o_visual_mapper_container {
+    min-height: 600px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+    .fs-7 {
+        font-size: 0.825rem;
+    }
+    .fs-8 {
+        font-size: 0.75rem;
+    }
+
+    .o_tree_item {
+        transition: all 0.15s ease-in-out;
+        user-select: none;
+        
+        &:hover {
+            border-color: #00a09d !important;
+            transform: translateX(2px);
+        }
+    }
+
+    .hover-bg-light:hover {
+        background-color: #f1f3f5 !important;
+    }
+
+    .o_connector_port {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        &:hover {
+            transform: scale(1.3) !important;
+            box-shadow: 0 0 6px rgba(0, 160, 157, 0.8);
+        }
+    }
+
+    .o_visual_mapper_svg {
+        pointer-events: none;
+        path {
+            pointer-events: visibleStroke;
+            &:hover {
+                stroke: #00a09d !important;
+                stroke-width: 4px !important;
+            }
+        }
+    }
+
+    .card {
+        border-radius: 6px;
+    }
+
+    .font-monospace {
+        font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+}

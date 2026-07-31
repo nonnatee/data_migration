@@ -48,6 +48,9 @@
                     </group>
 
                     <notebook>
+                        <page string="Visual Diagram Mapper" name="visual_diagram">
+                            <widget name="visual_mapper"/>
+                        </page>
                         <page string="Field Mapping Rules" name="mappings">
                             <field name="mapping_line_ids">
                                 <list editable="bottom" decoration-info="is_key_field == True">
@@ -74,6 +77,17 @@
                                             <field name="transform_type"/>
                                             <field name="default_value"/>
                                         </group>
+                                    </group>
+                                    <group string="Multi-Step Transformation Pipeline">
+                                        <field name="transform_ids" context="{'default_line_id': id}">
+                                            <list string="Transformation Steps">
+                                                <field name="sequence" widget="handle"/>
+                                                <field name="name"/>
+                                                <field name="transform_category"/>
+                                                <field name="cleansing_type" invisible="transform_category != 'cleansing'"/>
+                                                <field name="target_type" invisible="transform_category != 'type_conversion'"/>
+                                            </list>
+                                        </field>
                                     </group>
                                     <group string="Advanced Transformation Settings">
                                         <field name="value_mapping_json" invisible="transform_type != 'value_map'"/>
