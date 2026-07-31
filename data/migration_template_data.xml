@@ -50,7 +50,7 @@
         <!-- Default Mock Connection for Presets -->
         <record id="connection_template_preset_demo" model="migration.connection">
             <field name="name">Default System CSV Connector</field>
-            <field name="connector_type">csv</field>
+            <field name="conn_type">file_csv</field>
             <field name="source_columns">["id", "name", "email", "phone", "street", "city", "vat", "is_company", "default_code", "list_price", "weight", "barcode"]</field>
             <field name="state">connected</field>
         </record>
