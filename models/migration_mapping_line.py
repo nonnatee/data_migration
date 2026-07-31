@@ -116,6 +116,32 @@ class MigrationMappingLine(models.Model):
         if (val is None or val == '') and self.default_value:
             val = self.default_value
 
+        if val is None or val == '':
+            return False
+
+        # Step 2: Handle Relational Fields & Data Types
+        ttype = self.target_field_ttype
+        if ttype == 'many2one':
+            return self._resolve_many2one(val)
+        elif ttype in ('many2many', 'one2many'):
+            return self._resolve_many2many(val)
+        elif ttype == 'boolean':
+            if isinstance(val, bool):
+                return val
+            return str(val).lower() in ('true', '1', 'yes', 't', 'y', 'on')
+        elif ttype in ('integer', 'monetary'):
+            try:
+                return int(float(val))
+            except (ValueError, TypeError):
+                return 0
+        elif ttype == 'float':
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return 0.0
+
+        return val
+
     def action_test_pipeline(self, sample_value):
         """Returns step-by-step transformation traces for frontend live sample preview."""
         self.ensure_one()
@@ -143,7 +169,6 @@ class MigrationMappingLine(models.Model):
                     'error': err,
                 })
         else:
-            # Fallback direct test
             traces.append({
                 'step': 1,
                 'name': 'Direct Mapping',
@@ -160,31 +185,18 @@ class MigrationMappingLine(models.Model):
             'traces': traces,
         }
 
-        if val is None or val == '':
-            return False
+    def action_apply_preset(self, preset_id):
+        """Applies transformation preset template steps to this line."""
+        self.ensure_one()
+        preset = self.env['migration.transform.template'].browse(preset_id)
+        if preset and preset.exists():
+            return preset.action_apply_to_line(self)
+        return False
 
-        # Step 2: Handle Relational Fields (Many2one / Many2many / One2many)
-        ttype = self.target_field_ttype
-        if ttype == 'many2one':
-            return self._resolve_many2one(val)
-        elif ttype in ('many2many', 'one2many'):
-            return self._resolve_many2many(val)
-        elif ttype == 'boolean':
-            if isinstance(val, bool):
-                return val
-            return str(val).lower() in ('true', '1', 'yes', 't', 'y', 'on')
-        elif ttype in ('integer', 'monetary'):
-            try:
-                return int(float(val))
-            except (ValueError, TypeError):
-                return 0
-        elif ttype == 'float':
-            try:
-                return float(val)
-            except (ValueError, TypeError):
-                return 0.0
-
-        return val
+    def action_save_as_preset(self, preset_name):
+        """Saves current line transformation steps into a new reusable preset template."""
+        self.ensure_one()
+        return self.env['migration.transform.template'].create_preset_from_line(self, preset_name)
 
     def _resolve_many2one(self, val):
         """Resolves Many2one target record ID."""

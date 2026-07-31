@@ -13,6 +13,8 @@ Key Features:
 -------------
 * **Multi-Source Connectors**: CSV, Excel (.xlsx/.xls), JSON files, Visual FoxPro DBF (.dbf & .fpt memo files), ODBC (DSN & connection strings), PostgreSQL, MySQL, SQL Server, and Odoo XML-RPC/JSON-RPC.
 * **Visual Field Mapping**: Target model introspection, field-to-field mapping, value conversion maps, default values, and custom Python transformation snippets.
+* **Transformation Presets**: Reusable transformation pipeline library (cleansing, date format, unit conversion, math formulas, string slicing, slugifying).
+* **Pre-configured Model Templates**: Out-of-the-box migration templates for Contacts (res.partner) and Products (product.template).
 * **Relational Lookups**: Automated resolution for Many2one and Many2many fields by XML ID, key fields (e.g., ref, vat, email), search domain, or auto-creation.
 * **Upsert & Change Tracking**: Create, Update, Upsert (Update or Create), and Skip modes with persistent `ir.model.data` & checksum tracking.
 * **Savepoint Error Isolation**: Chunked batch processing with `with self.env.cr.savepoint():` per row, preventing single-record failures from aborting the entire run.
@@ -26,8 +28,10 @@ Key Features:
     'data': [
         'security/data_migration_security.xml',
         'security/ir.model.access.csv',
+        'data/migration_template_data.xml',
         'views/migration_connection_views.xml',
         'views/migration_template_views.xml',
+        'views/migration_transform_template_views.xml',
         'views/migration_mapping_transform_views.xml',
         'views/migration_job_views.xml',
         'views/migration_log_views.xml',

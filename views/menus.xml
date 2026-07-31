@@ -31,6 +31,12 @@
               action="action_migration_template"
               sequence="20"/>
 
+    <menuitem id="menu_migration_transform_templates"
+              name="Transformation Presets"
+              parent="menu_migration_studio_config"
+              action="action_migration_transform_template"
+              sequence="30"/>
+
     <!-- Execution & History Category -->
     <menuitem id="menu_migration_studio_execution"
               name="Executions &amp; Audit"

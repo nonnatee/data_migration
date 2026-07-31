@@ -11,6 +11,7 @@
                 <field name="transform_category"/>
                 <field name="cleansing_type" invisible="transform_category != 'cleansing'"/>
                 <field name="unit_type" invisible="transform_category != 'unit_conversion'"/>
+                <field name="math_op" invisible="transform_category != 'math_expr'"/>
                 <field name="target_type" invisible="transform_category != 'type_conversion'"/>
             </list>
         </field>
@@ -65,7 +66,22 @@
                         <field name="value_mapping_json" widget="ace" options="{'mode': 'json'}"/>
                     </group>
 
-                    <!-- 6. Python Expression -->
+                    <!-- 6. Math Expressions -->
+                    <group string="Math &amp; Arithmetic Settings" invisible="transform_category != 'math_expr'">
+                        <field name="math_op"/>
+                        <field name="math_operand" invisible="math_op in ('round', 'abs')"/>
+                        <field name="math_round_precision" invisible="math_op != 'round'"/>
+                    </group>
+
+                    <!-- 7. Substring / Slicing -->
+                    <group string="String Substring / Slice Settings" invisible="transform_category != 'string_slice'">
+                        <field name="slice_mode"/>
+                        <field name="slice_start" invisible="slice_mode != 'slice'"/>
+                        <field name="slice_end" invisible="slice_mode != 'slice'"/>
+                        <field name="slice_length" invisible="slice_mode == 'slice'"/>
+                    </group>
+
+                    <!-- 8. Python Expression -->
                     <group string="Python Code Snippet" invisible="transform_category != 'python_expr'">
                         <field name="python_code" widget="ace" options="{'mode': 'python'}"/>
                     </group>

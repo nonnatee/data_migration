@@ -49,6 +49,9 @@ class MigrationMappingTransform(models.Model):
         ('unit_conversion', 'Unit Conversion'),
         ('type_conversion', 'Data Type Conversion'),
         ('value_map', 'Value Mapping Table'),
+        ('math_expr', 'Math & Arithmetic'),
+        ('string_slice', 'String Substring / Slice'),
+        ('slugify', 'URL / Code Slugify'),
         ('python_expr', 'Python Expression'),
     ], string='Transformation Category', default='cleansing', required=True)
 
@@ -152,9 +155,31 @@ class MigrationMappingTransform(models.Model):
     python_code = fields.Text(string='Python Snippet', default='value.strip().title() if value else default')
     default_fallback = fields.Char(string='Default Fallback Value')
 
+    # 6. Math Expressions
+    math_op = fields.Selection([
+        ('add', 'Add (+ operand)'),
+        ('subtract', 'Subtract (- operand)'),
+        ('multiply', 'Multiply (* operand)'),
+        ('divide', 'Divide (/ operand)'),
+        ('round', 'Round to Precision'),
+        ('abs', 'Absolute Value'),
+    ], string='Math Operation', default='add')
+    math_operand = fields.Float(string='Math Operand Value', default=0.0)
+    math_round_precision = fields.Integer(string='Round Decimal Digits', default=2)
+
+    # 7. Substring / Slicing
+    slice_mode = fields.Selection([
+        ('slice', 'Start to End Index'),
+        ('left', 'First N Characters (Left)'),
+        ('right', 'Last N Characters (Right)'),
+    ], string='Slice Mode', default='slice')
+    slice_start = fields.Integer(string='Start Index', default=0)
+    slice_end = fields.Integer(string='End Index', default=10)
+    slice_length = fields.Integer(string='Character Count', default=5)
+
     name = fields.Char(string='Step Summary', compute='_compute_name', store=True)
 
-    @api.depends('transform_category', 'cleansing_type', 'unit_type', 'source_unit', 'target_unit', 'input_date_format', 'output_date_format', 'target_type')
+    @api.depends('transform_category', 'cleansing_type', 'unit_type', 'source_unit', 'target_unit', 'input_date_format', 'output_date_format', 'target_type', 'math_op', 'slice_mode')
     def _compute_name(self):
         for rec in self:
             if rec.transform_category == 'cleansing':
@@ -170,6 +195,12 @@ class MigrationMappingTransform(models.Model):
                 rec.name = f"Cast to {dict(rec._fields['target_type'].selection).get(rec.target_type, rec.target_type)}"
             elif rec.transform_category == 'value_map':
                 rec.name = "Value Map Lookup"
+            elif rec.transform_category == 'math_expr':
+                rec.name = f"Math: {dict(rec._fields['math_op'].selection).get(rec.math_op, rec.math_op)}"
+            elif rec.transform_category == 'string_slice':
+                rec.name = f"Slice ({rec.slice_mode})"
+            elif rec.transform_category == 'slugify':
+                rec.name = "Slugify text"
             elif rec.transform_category == 'python_expr':
                 rec.name = "Python Snippet"
             else:
@@ -272,7 +303,6 @@ class MigrationMappingTransform(models.Model):
                     return base_l / VOLUME_TO_L[t_unit]
 
             elif self.unit_type == 'temp':
-                # Convert source to Celsius first
                 if s_unit == 'C':
                     c_val = num_val
                 elif s_unit == 'F':
@@ -282,7 +312,6 @@ class MigrationMappingTransform(models.Model):
                 else:
                     c_val = num_val
 
-                # Convert Celsius to target
                 if t_unit == 'C':
                     return c_val
                 elif t_unit == 'F':
@@ -325,7 +354,53 @@ class MigrationMappingTransform(models.Model):
                 _logger.warning("Error parsing value mapping JSON: %s", e)
                 return val
 
-        # 6. Python Expression
+        # 6. Math & Arithmetic
+        elif self.transform_category == 'math_expr':
+            try:
+                num_val = float(str(val).strip())
+            except Exception:
+                return val
+
+            op = self.math_op
+            operand = self.math_operand or 0.0
+
+            if op == 'add':
+                return num_val + operand
+            elif op == 'subtract':
+                return num_val - operand
+            elif op == 'multiply':
+                return num_val * operand
+            elif op == 'divide':
+                return num_val / operand if operand != 0 else num_val
+            elif op == 'round':
+                prec = max(0, int(self.math_round_precision or 0))
+                return round(num_val, prec)
+            elif op == 'abs':
+                return abs(num_val)
+
+            return num_val
+
+        # 7. Substring / Slicing
+        elif self.transform_category == 'string_slice':
+            str_val = str(val)
+            mode = self.slice_mode
+            if mode == 'left':
+                return str_val[:max(0, self.slice_length)]
+            elif mode == 'right':
+                n = max(0, self.slice_length)
+                return str_val[-n:] if n > 0 else ''
+            else:
+                s = max(0, self.slice_start)
+                e = max(s, self.slice_end)
+                return str_val[s:e]
+
+        # 8. Slugify Text
+        elif self.transform_category == 'slugify':
+            str_val = str(val).strip().lower()
+            str_val = re.sub(r'[^\w\s-]', '', str_val)
+            return re.sub(r'[-\s]+', '_', str_val)
+
+        # 9. Python Expression
         elif self.transform_category == 'python_expr':
             if not self.python_code:
                 return val
@@ -344,3 +419,4 @@ class MigrationMappingTransform(models.Model):
                 return val
 
         return val
+

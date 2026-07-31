@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- 1. Transformation Step Presets -->
+        <record id="preset_transform_phone_cleaner" model="migration.transform.template">
+            <field name="name">Sanitize Phone &amp; Whitespace</field>
+            <field name="category">cleansing</field>
+            <field name="description">Trims whitespace and strips non-numeric characters except + symbol.</field>
+        </record>
+        <record id="preset_step_phone_trim" model="migration.transform.template.step">
+            <field name="template_id" ref="preset_transform_phone_cleaner"/>
+            <field name="sequence">10</field>
+            <field name="transform_category">cleansing</field>
+            <field name="cleansing_type">trim</field>
+        </record>
+        <record id="preset_step_phone_regex" model="migration.transform.template.step">
+            <field name="template_id" ref="preset_transform_phone_cleaner"/>
+            <field name="sequence">20</field>
+            <field name="transform_category">cleansing</field>
+            <field name="cleansing_type">regex</field>
+            <field name="regex_pattern">[^\d+]</field>
+            <field name="regex_replace"></field>
+        </record>
+
+        <record id="preset_transform_kg_to_lb" model="migration.transform.template">
+            <field name="name">Convert Mass (KG to LB)</field>
+            <field name="category">unit</field>
+            <field name="description">Converts mass values in Kilograms to Pounds.</field>
+        </record>
+        <record id="preset_step_kg_to_lb" model="migration.transform.template.step">
+            <field name="template_id" ref="preset_transform_kg_to_lb"/>
+            <field name="sequence">10</field>
+            <field name="transform_category">unit_conversion</field>
+            <field name="unit_type">mass</field>
+            <field name="source_unit">kg</field>
+            <field name="target_unit">lb</field>
+        </record>
+
+        <record id="preset_transform_slugify_code" model="migration.transform.template">
+            <field name="name">Slugify Reference Code</field>
+            <field name="category">formatting</field>
+            <field name="description">Converts strings to lowercase alphanumeric codes separated by underscores.</field>
+        </record>
+        <record id="preset_step_slugify_code" model="migration.transform.template.step">
+            <field name="template_id" ref="preset_transform_slugify_code"/>
+            <field name="sequence">10</field>
+            <field name="transform_category">slugify</field>
+        </record>
+
+        <!-- Default Mock Connection for Presets -->
+        <record id="connection_template_preset_demo" model="migration.connection">
+            <field name="name">Default System CSV Connector</field>
+            <field name="connector_type">csv</field>
+            <field name="source_columns">["id", "name", "email", "phone", "street", "city", "vat", "is_company", "default_code", "list_price", "weight", "barcode"]</field>
+            <field name="state">connected</field>
+        </record>
+
+        <!-- 2. Essential Built-in Model Template 1: Contacts (res.partner) -->
+        <record id="template_preset_res_partner" model="migration.template">
+            <field name="name">Preset: Customer &amp; Vendor Contacts (res.partner)</field>
+            <field name="connection_id" ref="connection_template_preset_demo"/>
+            <field name="target_model_id" search="[('model', '=', 'res.partner')]"/>
+            <field name="operation_mode">upsert</field>
+            <field name="batch_size">500</field>
+        </record>
+
+        <!-- Mappings for res.partner -->
+        <record id="line_res_partner_name" model="migration.mapping.line">
+            <field name="template_id" ref="template_preset_res_partner"/>
+            <field name="source_field">name</field>
+            <field name="target_field_id" search="[('model', '=', 'res.partner'), ('name', '=', 'name')]"/>
+            <field name="transform_type">direct</field>
+            <field name="is_key_field" eval="True"/>
+        </record>
+        <record id="line_res_partner_email" model="migration.mapping.line">
+            <field name="template_id" ref="template_preset_res_partner"/>
+            <field name="source_field">email</field>
+            <field name="target_field_id" search="[('model', '=', 'res.partner'), ('name', '=', 'email')]"/>
+            <field name="transform_type">direct</field>
+            <field name="is_key_field" eval="True"/>
+        </record>
+        <record id="line_res_partner_phone" model="migration.mapping.line">
+            <field name="template_id" ref="template_preset_res_partner"/>
+            <field name="source_field">phone</field>
+            <field name="target_field_id" search="[('model', '=', 'res.partner'), ('name', '=', 'phone')]"/>
+            <field name="transform_type">direct</field>
+        </record>
+        <record id="transform_res_partner_phone_trim" model="migration.mapping.transform">
+            <field name="line_id" ref="line_res_partner_phone"/>
+            <field name="sequence">10</field>
+            <field name="transform_category">cleansing</field>
+            <field name="cleansing_type">trim</field>
+        </record>
+
+        <!-- 3. Essential Built-in Model Template 2: Products (product.template) -->
+        <record id="template_preset_product_template" model="migration.template">
+            <field name="name">Preset: Product Catalog (product.template)</field>
+            <field name="connection_id" ref="connection_template_preset_demo"/>
+            <field name="target_model_id" search="[('model', '=', 'product.template')]"/>
+            <field name="operation_mode">upsert</field>
+            <field name="batch_size">500</field>
+        </record>
+
+        <!-- Mappings for product.template -->
+        <record id="line_product_name" model="migration.mapping.line">
+            <field name="template_id" ref="template_preset_product_template"/>
+            <field name="source_field">name</field>
+            <field name="target_field_id" search="[('model', '=', 'product.template'), ('name', '=', 'name')]"/>
+            <field name="transform_type">direct</field>
+        </record>
+        <record id="line_product_code" model="migration.mapping.line">
+            <field name="template_id" ref="template_preset_product_template"/>
+            <field name="source_field">default_code</field>
+            <field name="target_field_id" search="[('model', '=', 'product.template'), ('name', '=', 'default_code')]"/>
+            <field name="transform_type">direct</field>
+            <field name="is_key_field" eval="True"/>
+        </record>
+        <record id="line_product_price" model="migration.mapping.line">
+            <field name="template_id" ref="template_preset_product_template"/>
+            <field name="source_field">list_price</field>
+            <field name="target_field_id" search="[('model', '=', 'product.template'), ('name', '=', 'list_price')]"/>
+            <field name="transform_type">direct</field>
+        </record>
+        <record id="line_product_weight" model="migration.mapping.line">
+            <field name="template_id" ref="template_preset_product_template"/>
+            <field name="source_field">weight</field>
+            <field name="target_field_id" search="[('model', '=', 'product.template'), ('name', '=', 'weight')]"/>
+            <field name="transform_type">direct</field>
+        </record>
+
+    </data>
+</odoo>

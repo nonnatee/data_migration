@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Transformation Preset List View -->
+    <record id="view_migration_transform_template_list" model="ir.ui.view">
+        <field name="name">migration.transform.template.list</field>
+        <field name="model">migration.transform.template</field>
+        <field name="arch" type="xml">
+            <list string="Transformation Presets">
+                <field name="name"/>
+                <field name="category"/>
+                <field name="step_count"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Transformation Preset Form View -->
+    <record id="view_migration_transform_template_form" model="ir.ui.view">
+        <field name="name">migration.transform.template.form</field>
+        <field name="model">migration.transform.template</field>
+        <field name="arch" type="xml">
+            <form string="Transformation Preset">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Phone Number Sanitizer"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Preset Setup">
+                            <field name="category"/>
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                        <group string="Details">
+                            <field name="description" placeholder="Describe what this transformation pipeline does..."/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Transformation Pipeline Steps" name="steps">
+                            <field name="step_ids">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="transform_category"/>
+                                    <field name="cleansing_type" invisible="transform_category != 'cleansing'"/>
+                                    <field name="unit_type" invisible="transform_category != 'unit_conversion'"/>
+                                    <field name="math_op" invisible="transform_category != 'math_expr'"/>
+                                    <field name="slice_mode" invisible="transform_category != 'string_slice'"/>
+                                    <field name="target_type" invisible="transform_category != 'type_conversion'"/>
+                                </list>
+                                <form string="Preset Step Detail">
+                                    <group>
+                                        <group string="Step Configuration">
+                                            <field name="sequence"/>
+                                            <field name="transform_category"/>
+                                        </group>
+                                    </group>
+                                    <group string="Data Cleansing" invisible="transform_category != 'cleansing'">
+                                        <field name="cleansing_type"/>
+                                        <field name="pad_char" invisible="cleansing_type not in ('pad_left', 'pad_right')"/>
+                                        <field name="pad_count" invisible="cleansing_type not in ('pad_left', 'pad_right')"/>
+                                        <field name="regex_pattern" invisible="cleansing_type != 'regex'"/>
+                                        <field name="regex_replace" invisible="cleansing_type != 'regex'"/>
+                                    </group>
+                                    <group string="Date &amp; Time Formatting" invisible="transform_category != 'date_format'">
+                                        <field name="input_date_format"/>
+                                        <field name="output_date_format"/>
+                                        <field name="tz_offset_hours"/>
+                                    </group>
+                                    <group string="Unit Conversion" invisible="transform_category != 'unit_conversion'">
+                                        <field name="unit_type"/>
+                                        <field name="source_unit" invisible="unit_type == 'custom'"/>
+                                        <field name="target_unit" invisible="unit_type == 'custom'"/>
+                                        <field name="custom_scale_ratio" invisible="unit_type != 'custom'"/>
+                                    </group>
+                                    <group string="Data Type Conversion" invisible="transform_category != 'type_conversion'">
+                                        <field name="target_type"/>
+                                    </group>
+                                    <group string="Math &amp; Arithmetic" invisible="transform_category != 'math_expr'">
+                                        <field name="math_op"/>
+                                        <field name="math_operand" invisible="math_op in ('round', 'abs')"/>
+                                        <field name="math_round_precision" invisible="math_op != 'round'"/>
+                                    </group>
+                                    <group string="String Substring / Slice" invisible="transform_category != 'string_slice'">
+                                        <field name="slice_mode"/>
+                                        <field name="slice_start" invisible="slice_mode != 'slice'"/>
+                                        <field name="slice_end" invisible="slice_mode != 'slice'"/>
+                                        <field name="slice_length" invisible="slice_mode == 'slice'"/>
+                                    </group>
+                                    <group string="Value Mapping Table &amp; Python Code" invisible="transform_category not in ('value_map', 'python_expr')">
+                                        <field name="value_mapping_json" invisible="transform_category != 'value_map'"/>
+                                        <field name="python_code" invisible="transform_category != 'python_expr'" widget="ace" options="{'mode': 'python'}"/>
+                                        <field name="default_fallback"/>
+                                    </group>
+                                </form>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_migration_transform_template" model="ir.actions.act_window">
+        <field name="name">Transformation Presets</field>
+        <field name="res_model">migration.transform.template</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

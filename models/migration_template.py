@@ -165,6 +165,13 @@ class MigrationTemplate(models.Model):
                     'value_mapping_json': t.value_mapping_json,
                     'python_code': t.python_code,
                     'default_fallback': t.default_fallback,
+                    'math_op': t.math_op,
+                    'math_operand': t.math_operand,
+                    'math_round_precision': t.math_round_precision,
+                    'slice_mode': t.slice_mode,
+                    'slice_start': t.slice_start,
+                    'slice_end': t.slice_end,
+                    'slice_length': t.slice_length,
                     'name': t.name,
                 })
 
@@ -182,6 +189,18 @@ class MigrationTemplate(models.Model):
                 'transforms': transforms,
             })
 
+        # 4. Available transformation presets
+        presets = []
+        preset_recs = self.env['migration.transform.template'].search([('active', '=', True)])
+        for p in preset_recs:
+            presets.append({
+                'id': p.id,
+                'name': p.name,
+                'category': p.category,
+                'description': p.description or '',
+                'step_count': p.step_count,
+            })
+
         return {
             'template_id': self.id,
             'template_name': self.name,
@@ -190,6 +209,7 @@ class MigrationTemplate(models.Model):
             'source_columns': source_cols,
             'target_fields': target_fields,
             'mapping_lines': lines,
+            'transform_presets': presets,
         }
 
     def action_save_visual_mapping(self, mapping_data):
@@ -250,6 +270,13 @@ class MigrationTemplate(models.Model):
                     'value_mapping_json': t_item.get('value_mapping_json', '{}'),
                     'python_code': t_item.get('python_code', ''),
                     'default_fallback': t_item.get('default_fallback', ''),
+                    'math_op': t_item.get('math_op', 'add'),
+                    'math_operand': t_item.get('math_operand', 0.0),
+                    'math_round_precision': t_item.get('math_round_precision', 2),
+                    'slice_mode': t_item.get('slice_mode', 'slice'),
+                    'slice_start': t_item.get('slice_start', 0),
+                    'slice_end': t_item.get('slice_end', 10),
+                    'slice_length': t_item.get('slice_length', 5),
                 }
 
                 if t_id and isinstance(t_id, int):

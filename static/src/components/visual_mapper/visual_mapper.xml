@@ -2,10 +2,12 @@
 <templates xml:space="preserve">
 
     <t t-name="data_migration.VisualMapperWidget">
-        <div class="o_visual_mapper_container d-flex flex-column h-100 position-relative" t-ref="mapperContainer">
+        <div class="o_visual_mapper_container d-flex flex-column h-100 position-relative" 
+             t-ref="mapperContainer"
+             t-on-mousemove="(e) => this.onCanvasMouseMove(e)">
             
             <!-- Top Control Bar -->
-            <div class="o_visual_mapper_header d-flex align-items-center justify-content-between px-3 py-2 border-bottom bg-view shadow-sm">
+            <div class="o_visual_mapper_header d-flex align-items-center justify-content-between px-3 py-2 border-bottom bg-view shadow-sm flex-wrap gap-2">
                 <div class="d-flex align-items-center gap-3">
                     <h5 class="mb-0 fw-bold text-primary">
                         <i class="fa fa-sitemap me-2"/>Visual Schema &amp; Transformation Mapper
@@ -14,11 +16,42 @@
                         <i class="fa fa-database me-1"/><t t-out="state.connectionName"/> &amp;rarr; <t t-out="state.targetModelName"/>
                     </span>
                 </div>
+
+                <!-- Filter Modes & Toolbar Tools -->
                 <div class="d-flex align-items-center gap-2">
-                    <button class="btn btn-sm btn-outline-secondary" t-on-click="loadData">
-                        <i class="fa fa-refresh me-1"/>Reload Schema
+                    <!-- Filter Mode Group -->
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" 
+                                t-attf-class="btn #{state.filterMode == 'all' ? 'btn-primary fw-bold' : 'btn-outline-secondary'}"
+                                t-on-click="() => this.setFilterMode('all')">
+                            All (<t t-out="state.sourceColumns.length"/>)
+                        </button>
+                        <button type="button" 
+                                t-attf-class="btn #{state.filterMode == 'mapped' ? 'btn-success fw-bold' : 'btn-outline-secondary'}"
+                                t-on-click="() => this.setFilterMode('mapped')">
+                            Mapped (<t t-out="mappedSourceCount"/>)
+                        </button>
+                        <button type="button" 
+                                t-attf-class="btn #{state.filterMode == 'unmapped' ? 'btn-warning text-dark fw-bold' : 'btn-outline-secondary'}"
+                                t-on-click="() => this.setFilterMode('unmapped')">
+                            Unmapped (<t t-out="unmappedSourceCount"/>)
+                        </button>
+                    </div>
+
+                    <div class="vr mx-1"/>
+
+                    <!-- Batch Tools -->
+                    <button class="btn btn-sm btn-outline-info" t-on-click="autoMapMatching" title="Auto-match source columns with target field names">
+                        <i class="fa fa-magic me-1"/>Auto-Map
                     </button>
-                    <button class="btn btn-sm btn-primary fw-bold" t-on-click="saveMappings" t-att-disabled="state.isSaving">
+                    <button class="btn btn-sm btn-outline-danger" t-on-click="clearAllMappings" title="Clear all field mappings">
+                        <i class="fa fa-eraser me-1"/>Clear All
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" t-on-click="loadData" title="Reload schema">
+                        <i class="fa fa-refresh me-1"/>Reload
+                    </button>
+                    
+                    <button class="btn btn-sm btn-primary fw-bold ms-2" t-on-click="saveMappings" t-att-disabled="state.isSaving">
                         <i t-if="!state.isSaving" class="fa fa-save me-1"/>
                         <i t-if="state.isSaving" class="fa fa-spinner fa-spin me-1"/>
                         Save Field Mappings
@@ -36,7 +69,7 @@
             <div t-if="!state.isLoading" class="o_visual_mapper_body d-flex flex-grow-1 position-relative overflow-hidden">
                 
                 <!-- SVG Bezier Connector Canvas -->
-                <svg class="o_visual_mapper_svg position-absolute top-0 start-0 w-100 h-100 pe-none" t-ref="svgCanvas" style="z-index: 10;"></svg>
+                <svg class="o_visual_mapper_svg position-absolute top-0 start-0 w-100 h-100 pe-none" t-ref="svgCanvas" style="z-index: 10; transition: opacity 0.15s ease;"></svg>
 
                 <!-- Left Column: Sources Tree -->
                 <div class="o_visual_mapper_col o_sources_col border-end bg-light d-flex flex-column flex-basis-30" style="min-width: 280px; flex: 1;">
@@ -49,14 +82,18 @@
                             <input type="text" class="form-control" placeholder="Search source..." t-model="state.sourceSearch"/>
                         </div>
                     </div>
-                    <div class="o_tree_list p-2 overflow-auto flex-grow-1">
+                    <div class="o_tree_list p-2 overflow-auto flex-grow-1" t-ref="sourceList" t-on-scroll="() => this.onListScroll()">
                         <t t-if="filteredSourceColumns.length == 0">
-                            <div class="text-muted text-center p-4 fs-7">No source columns found. Click reload or test connection first.</div>
+                            <div class="text-muted text-center p-4 fs-7">No matching source columns.</div>
                         </t>
                         <t t-foreach="filteredSourceColumns" t-as="col" t-key="col">
-                            <div t-attf-class="o_tree_item d-flex align-items-center justify-content-between p-2 mb-1 rounded cursor-pointer border #{state.selectedSourceCol == col ? 'bg-primary text-white border-primary shadow-sm' : 'bg-view border-light hover-bg-light'}"
+                            <div t-attf-class="o_tree_item d-flex align-items-center justify-content-between p-2 mb-1 rounded cursor-pointer border #{state.selectedSourceCol == col ? 'bg-primary text-white border-primary shadow-sm' : 'bg-view border-light hover-bg-light'} #{state.dragSourceCol == col ? 'o_dragging_item opacity-50' : ''}"
+                                 draggable="true"
+                                 t-on-dragstart="(e) => this.onSourceDragStart(e, col)"
+                                 t-on-dragend="() => this.onDragEnd()"
                                  t-on-click="() => this.selectSource(col)">
                                 <div class="d-flex align-items-center text-truncate me-2">
+                                    <i class="fa fa-arrows-alt me-2 text-muted drag-handle cursor-move" title="Drag to target field"/>
                                     <i class="fa fa-file-code-o me-2 opacity-75"/>
                                     <span class="fw-semibold text-truncate" t-out="col"/>
                                 </div>
@@ -83,15 +120,20 @@
                             <input type="text" class="form-control" placeholder="Search target..." t-model="state.targetSearch"/>
                         </div>
                     </div>
-                    <div class="o_tree_list p-2 overflow-auto flex-grow-1">
+                    <div class="o_tree_list p-2 overflow-auto flex-grow-1" t-ref="targetList" t-on-scroll="() => this.onListScroll()">
+                        <t t-if="filteredTargetFields.length == 0">
+                            <div class="text-muted text-center p-4 fs-7">No matching target fields.</div>
+                        </t>
                         <t t-foreach="filteredTargetFields" t-as="f" t-key="f.id">
-                            <div t-attf-class="o_tree_item d-flex align-items-center justify-content-between p-2 mb-1 rounded cursor-pointer border #{activeLine &amp;&amp; activeLine.target_field_id == f.id ? 'bg-primary text-white border-primary shadow-sm' : 'bg-view border-light hover-bg-light'}"
+                            <div t-attf-class="o_tree_item o_target_drop_zone d-flex align-items-center justify-content-between p-2 mb-1 rounded cursor-pointer border #{activeLine &amp;&amp; activeLine.target_field_id == f.id ? 'bg-primary text-white border-primary shadow-sm' : 'bg-view border-light hover-bg-light'} #{state.dragOverTargetId == f.id ? 'o_drag_over_target border-warning bg-warning-subtle shadow' : ''}"
+                                 t-on-dragover="(e) => this.onTargetDragOver(e, f)"
+                                 t-on-drop="(e) => this.onTargetDrop(e, f)"
                                  t-on-click="() => this.selectTarget(f)">
                                 <div class="d-flex align-items-center gap-2 text-truncate">
-                                    <div class="o_connector_port target_port bg-primary rounded-circle border border-white" 
+                                    <div t-attf-class="o_connector_port target_port bg-primary rounded-circle border border-white #{state.dragOverTargetId == f.id ? 'o_port_glow' : ''}" 
                                          t-att-data-target-port="f.id" 
                                          style="width: 12px; height: 12px; transform: translateX(-6px);" 
-                                         title="Click to map"/>
+                                         title="Click or drop here to map"/>
                                     <i t-attf-class="fa #{f.required ? 'fa-asterisk text-danger' : 'fa-tag'} fs-7 opacity-75"/>
                                     <div class="text-truncate">
                                         <div class="fw-semibold text-truncate" t-out="f.field_description || f.name"/>
@@ -111,7 +153,7 @@
                         <div class="d-flex flex-column align-items-center justify-content-center flex-grow-1 p-4 text-center text-muted">
                             <i class="fa fa-hand-o-left fa-3x mb-3 text-secondary opacity-50"/>
                             <h5>No Field Mapping Selected</h5>
-                            <p class="fs-7">Select a source column on the left and a target field in the middle to create or inspect field transformation rules.</p>
+                            <p class="fs-7">Drag a source column onto a target field, or select a mapped field pair to edit transformation rules.</p>
                         </div>
                     </t>
 
@@ -145,11 +187,30 @@
 
                         <!-- Transformation Pipeline Builder -->
                         <div class="p-3 border-bottom flex-grow-1">
-                            <div class="d-flex align-items-center justify-content-between mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
                                 <h6 class="fw-bold mb-0 text-dark">
                                     <i class="fa fa-cogs text-primary me-1"/> Transformation Pipeline
                                 </h6>
-                                <span class="badge bg-info text-dark rounded-pill"><t t-out="(activeLine.transforms || []).length"/> Steps</span>
+                                <div class="d-flex align-items-center gap-1">
+                                    <button class="btn btn-sm btn-outline-success py-0 px-2 fs-7" t-on-click="saveAsPreset" title="Save pipeline steps as reusable Preset Template">
+                                        <i class="fa fa-bookmark me-1"/>Save Preset
+                                    </button>
+                                    <span class="badge bg-info text-dark rounded-pill"><t t-out="(activeLine.transforms || []).length"/> Steps</span>
+                                </div>
+                            </div>
+
+                            <!-- Preset Template Application Toolbar -->
+                            <div t-if="state.transformPresets.length > 0" class="input-group input-group-sm mb-3">
+                                <span class="input-group-text bg-light text-muted fs-8"><i class="fa fa-magic me-1"/>Preset</span>
+                                <select class="form-select fs-8" t-model="state.selectedPresetId">
+                                    <option value="">-- Choose Preset Template --</option>
+                                    <t t-foreach="state.transformPresets" t-as="p" t-key="p.id">
+                                        <option t-att-value="p.id"><t t-out="p.name"/> (<t t-out="p.category"/> - <t t-out="p.step_count"/> steps)</option>
+                                    </t>
+                                </select>
+                                <button class="btn btn-outline-secondary fs-8" t-on-click="applySelectedPreset" t-att-disabled="!state.selectedPresetId">
+                                    Apply
+                                </button>
                             </div>
 
                             <!-- List of Pipeline Steps -->
@@ -289,6 +350,58 @@
                                                     <option value="date">Date</option>
                                                 </select>
                                             </t>
+
+                                            <t t-if="step.transform_category == 'math_expr'">
+                                                <div class="row g-2">
+                                                    <div class="col-6">
+                                                        <label class="form-label mb-1">Operation</label>
+                                                        <select class="form-select form-select-sm" t-model="step.math_op">
+                                                            <option value="add">Add (+)</option>
+                                                            <option value="subtract">Subtract (-)</option>
+                                                            <option value="multiply">Multiply (*)</option>
+                                                            <option value="divide">Divide (/)</option>
+                                                            <option value="round">Round</option>
+                                                            <option value="abs">Absolute Value</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <label class="form-label mb-1">Operand / Precision</label>
+                                                        <input t-if="step.math_op != 'round'" type="number" step="any" class="form-control form-control-sm" t-model="step.math_operand"/>
+                                                        <input t-if="step.math_op == 'round'" type="number" class="form-control form-control-sm" t-model="step.math_round_precision"/>
+                                                    </div>
+                                                </div>
+                                            </t>
+
+                                            <t t-if="step.transform_category == 'string_slice'">
+                                                <div class="mb-2">
+                                                    <label class="form-label mb-1">Slice Mode</label>
+                                                    <select class="form-select form-select-sm" t-model="step.slice_mode">
+                                                        <option value="slice">Start to End Index</option>
+                                                        <option value="left">First N Chars (Left)</option>
+                                                        <option value="right">Last N Chars (Right)</option>
+                                                    </select>
+                                                </div>
+                                                <div t-if="step.slice_mode == 'slice'" class="row g-2">
+                                                    <div class="col-6">
+                                                        <label class="form-label mb-1">Start Index</label>
+                                                        <input type="number" class="form-control form-control-sm" t-model="step.slice_start"/>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <label class="form-label mb-1">End Index</label>
+                                                        <input type="number" class="form-control form-control-sm" t-model="step.slice_end"/>
+                                                    </div>
+                                                </div>
+                                                <div t-if="step.slice_mode != 'slice'" class="mb-1">
+                                                    <label class="form-label mb-1">Char Count</label>
+                                                    <input type="number" class="form-control form-control-sm" t-model="step.slice_length"/>
+                                                </div>
+                                            </t>
+
+                                            <t t-if="step.transform_category == 'slugify'">
+                                                <div class="alert alert-info py-1 px-2 fs-8 mb-0">
+                                                    <i class="fa fa-link me-1"/> Format as lower_case_code
+                                                </div>
+                                            </t>
                                         </div>
                                     </div>
                                 </t>
@@ -302,6 +415,9 @@
                                     <option value="unit_conversion">Unit Conversion</option>
                                     <option value="type_conversion">Data Type Conversion</option>
                                     <option value="value_map">Value Mapping Table</option>
+                                    <option value="math_expr">Math &amp; Arithmetic</option>
+                                    <option value="string_slice">String Substring / Slice</option>
+                                    <option value="slugify">URL / Code Slugify</option>
                                     <option value="python_expr">Python Expression</option>
                                 </select>
                                 <button class="btn btn-outline-primary" t-on-click="addTransformStep">
