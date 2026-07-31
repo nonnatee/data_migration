@@ -351,4 +351,8 @@ registry.category("fields").add("visual_mapper", {
     component: VisualMapperWidget,
 });
 
+registry.category("view_widgets").add("visual_mapper", {
+    component: VisualMapperWidget,
+});
+
 registry.category("actions").add("data_migration.visual_mapper", VisualMapperWidget);
