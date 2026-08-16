@@ -439,7 +439,7 @@
                 Create your first Multi-Stage Data Migration Plan!
             </p>
             <p>
-                Organize complex ERP migrations into sequential stages (e.g. Master Data &rarr; Products &rarr; Opening Balances &rarr; Orders), with automated cross-stage record mapping resolution.
+                Organize complex ERP migrations into sequential stages (e.g. Master Data &#8594; Products &#8594; Opening Balances &#8594; Orders), with automated cross-stage record mapping resolution.
             </p>
         </field>
     </record>
