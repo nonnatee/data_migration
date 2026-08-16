@@ -204,25 +204,6 @@
         </field>
     </record>
 
-    <record id="view_migration_plan_search" model="ir.ui.view">
-        <field name="name">migration.plan.search</field>
-        <field name="model">migration.plan</field>
-        <field name="arch" type="xml">
-            <search string="Search Migration Plans">
-                <field name="name"/>
-                <field name="code"/>
-                <filter string="Running" name="running" domain="[('state', '=', 'running')]"/>
-                <filter string="Completed" name="done" domain="[('state', '=', 'done')]"/>
-                <filter string="Has Errors" name="errors" domain="[('state', 'in', ['done_with_errors', 'failed'])]"/>
-                <separator/>
-                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
-                <group expand="0" string="Group By">
-                    <filter string="Status" name="group_by_state" context="{'group_by': 'state'}"/>
-                </group>
-            </search>
-        </field>
-    </record>
-
     <!-- ============================================================ -->
     <!-- MIGRATION PLAN STAGE: FORM, LIST                             -->
     <!-- ============================================================ -->
