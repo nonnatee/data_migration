@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="data_migration.MigrationPlanConsole">
+        <div class="o_migration_plan_console">
+            <!-- Top Control Bar -->
+            <div class="console_header d-flex justify-content-between align-items-center p-3 border-bottom bg-view shadow-sm">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex flex-column">
+                        <div class="d-flex align-items-center gap-2">
+                            <h4 class="m-0 fw-bold text-primary">
+                                <i class="fa fa-sitemap me-2"/>
+                                <t t-if="state.plan">
+                                    <t t-out="state.plan.name"/>
+                                </t>
+                                <t t-else="">Migration Plan Console</t>
+                            </h4>
+                            <t t-if="state.plan">
+                                <span class="badge bg-secondary" t-out="state.plan.code"/>
+                                <span t-att-class="'badge ' + (state.plan.state === 'done' ? 'bg-success' : (state.plan.state === 'running' ? 'bg-primary' : (state.plan.state === 'failed' ? 'bg-danger' : (state.plan.state === 'done_with_errors' ? 'bg-warning text-dark' : 'bg-info'))))">
+                                    <t t-out="state.plan.state"/>
+                                </span>
+                            </t>
+                        </div>
+                        <small class="text-muted" t-if="state.plan">
+                            Error Policy: <strong t-out="state.plan.default_error_policy"/> | 
+                            Stages: <strong t-out="state.stages.length"/> | 
+                            Steps: <strong t-out="state.steps.length"/>
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Action Toolbar Buttons -->
+                <div class="d-flex gap-2 align-items-center">
+                    <button class="btn btn-outline-secondary btn-sm" t-on-click="runPreflightCheck" title="Pre-Flight Health Check">
+                        <i class="fa fa-check-circle-o text-info me-1"/> Pre-Flight Check
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" t-on-click="() => this.executePlanDirect(true)" title="Run Dry-Run Simulation" t-att-disabled="state.isExecuting">
+                        <i class="fa fa-flask text-warning me-1"/> Dry-Run Simulation
+                    </button>
+                    <button class="btn btn-primary btn-sm" t-on-click="openRunWizard" t-att-disabled="state.isExecuting">
+                        <i class="fa fa-play me-1"/> Execute Plan Wizard
+                    </button>
+                    <button class="btn btn-outline-warning btn-sm" t-on-click="resetToDraft" title="Reset Plan to Draft">
+                        <i class="fa fa-refresh me-1"/> Reset Draft
+                    </button>
+                    <button class="btn btn-outline-dark btn-sm" t-on-click="openPlanForm" title="Edit Plan Configuration">
+                        <i class="fa fa-pencil me-1"/> Plan Config
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div t-if="state.isLoading" class="p-5 text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <div class="mt-2 text-muted">Loading plan execution data...</div>
+            </div>
+
+            <div t-else="" class="console_body p-3">
+                <!-- KPI Summary Cards -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="card metric_card border-0 shadow-sm bg-gradient-primary text-white p-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-uppercase text-white-50 small fw-bold">Overall Progress</div>
+                                    <h3 class="m-0 fw-bold"><t t-out="state.plan?.progress_percent or 0"/>%</h3>
+                                </div>
+                                <i class="fa fa-tachometer fa-2x text-white-50"/>
+                            </div>
+                            <div class="progress mt-2" style="height: 6px; background-color: rgba(255,255,255,0.3);">
+                                <div class="progress-bar bg-white" role="progressbar" t-att-style="'width: ' + (state.plan?.progress_percent or 0) + '%'"/>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card metric_card border-0 shadow-sm bg-view p-3 border-start border-primary border-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-uppercase text-muted small fw-bold">Total Records</div>
+                                    <h3 class="m-0 fw-bold text-dark"><t t-out="state.plan?.total_records or 0"/></h3>
+                                </div>
+                                <i class="fa fa-database fa-2x text-primary-subtle"/>
+                            </div>
+                            <div class="small text-muted mt-2">Processed: <strong t-out="state.plan?.processed_records or 0"/></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card metric_card border-0 shadow-sm bg-view p-3 border-start border-success border-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-uppercase text-muted small fw-bold">Migrated Success</div>
+                                    <h3 class="m-0 fw-bold text-success"><t t-out="state.plan?.success_records or 0"/></h3>
+                                </div>
+                                <i class="fa fa-check-circle fa-2x text-success-subtle"/>
+                            </div>
+                            <div class="small text-muted mt-2">No errors encountered</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card metric_card border-0 shadow-sm bg-view p-3 border-start border-danger border-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-uppercase text-muted small fw-bold">Failed / Errors</div>
+                                    <h3 class="m-0 fw-bold text-danger"><t t-out="state.plan?.error_records or 0"/></h3>
+                                </div>
+                                <i class="fa fa-exclamation-triangle fa-2x text-danger-subtle"/>
+                            </div>
+                            <div class="small text-muted mt-2">Savepoint isolated</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Content Grid: Stage Stepper & Console Logs -->
+                <div class="row g-3">
+                    <!-- Stage Pipeline Stepper (Left 7 Cols) -->
+                    <div class="col-lg-7">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header bg-view d-flex justify-content-between align-items-center py-2">
+                                <h6 class="m-0 fw-bold text-dark">
+                                    <i class="fa fa-tasks me-2 text-primary"/> Stage &amp; Step Execution Pipeline
+                                </h6>
+                                <span class="badge bg-light text-dark"><t t-out="state.stages.length"/> Stages</span>
+                            </div>
+                            <div class="card-body p-3 stage_list_container">
+                                <t t-if="!state.stages.length">
+                                    <div class="text-center p-4 text-muted">
+                                        <i class="fa fa-info-circle fa-2x mb-2"/>
+                                        <p>No stages configured in this plan yet.</p>
+                                    </div>
+                                </t>
+                                <t t-foreach="state.stages" t-as="stage" t-key="stage.id">
+                                    <div class="stage_card mb-3 p-3 rounded border bg-light shadow-xs">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="stage_seq_badge"><t t-out="stage.sequence"/></span>
+                                                <h6 class="m-0 fw-bold text-dark"><t t-out="stage.name"/></h6>
+                                            </div>
+                                            <span t-att-class="'badge ' + (stage.state === 'done' ? 'bg-success' : (stage.state === 'running' ? 'bg-primary' : (stage.state === 'failed' ? 'bg-danger' : 'bg-secondary')))">
+                                                <t t-out="stage.state"/>
+                                            </span>
+                                        </div>
+
+                                        <!-- Steps under this stage -->
+                                        <div class="step_list ms-3 border-start ps-3 pt-2">
+                                            <t t-set="stageSteps" t-value="getStepsForStage(stage.id)"/>
+                                            <t t-if="!stageSteps.length">
+                                                <small class="text-muted italic">No steps in this stage.</small>
+                                            </t>
+                                            <t t-foreach="stageSteps" t-as="step" t-key="step.id">
+                                                <div class="step_row d-flex justify-content-between align-items-center p-2 mb-1 rounded bg-view">
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <i t-att-class="'fa ' + (step.state === 'done' ? 'fa-check text-success' : (step.state === 'running' ? 'fa-spinner fa-spin text-primary' : (step.state === 'failed' ? 'fa-times text-danger' : 'fa-circle-o text-muted')))"/>
+                                                        <span class="fw-semibold text-dark"><t t-out="step.name"/></span>
+                                                        <span class="badge bg-light text-muted border small"><t t-out="step.target_model_name"/></span>
+                                                    </div>
+                                                    <div class="d-flex align-items-center gap-3">
+                                                        <small class="text-muted">
+                                                            <strong class="text-success" t-out="step.success_records or 0"/> / <t t-out="step.total_records or 0"/>
+                                                        </small>
+                                                        <button class="btn btn-xs btn-outline-secondary" t-on-click="() => this.openTemplateForm(step.template_id[0])" title="Open Mapping Template">
+                                                            <i class="fa fa-external-link"/>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </t>
+                                        </div>
+                                    </div>
+                                </t>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Execution Logs Terminal (Right 5 Cols) -->
+                    <div class="col-lg-5">
+                        <div class="card border-0 shadow-sm h-100 console_log_card">
+                            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="fa fa-terminal text-success"/>
+                                    <span class="fw-bold">Execution Audit Log Stream</span>
+                                </div>
+                                <div class="d-flex gap-1 align-items-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button t-att-class="'btn btn-xs ' + (state.logFilter === 'all' ? 'btn-secondary active' : 'btn-outline-secondary text-white')" t-on-click="() => this.setLogFilter('all')">All</button>
+                                        <button t-att-class="'btn btn-xs ' + (state.logFilter === 'error' ? 'btn-danger active' : 'btn-outline-danger')" t-on-click="() => this.setLogFilter('error')">Errors</button>
+                                        <button t-att-class="'btn btn-xs ' + (state.logFilter === 'warning' ? 'btn-warning active' : 'btn-outline-warning')" t-on-click="() => this.setLogFilter('warning')">Warn</button>
+                                    </div>
+                                    <button class="btn btn-xs btn-outline-light ms-1" t-on-click="exportLogsCsv" title="Export CSV">
+                                        <i class="fa fa-download"/>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body bg-dark text-light p-2 font-monospace log_terminal_body">
+                                <t t-if="!filteredLogs.length">
+                                    <div class="text-center p-4 text-muted">
+                                        <i class="fa fa-code fa-2x mb-2"/>
+                                        <p class="small">No logs matching filter.</p>
+                                    </div>
+                                </t>
+                                <div class="log_entries">
+                                    <t t-foreach="filteredLogs" t-as="log" t-key="log.id">
+                                        <div t-att-class="'log_entry p-1 rounded mb-1 ' + (log.log_type === 'error' ? 'text-danger bg-danger-subtle' : (log.log_type === 'warning' ? 'text-warning' : 'text-info'))">
+                                            <span class="badge bg-dark-subtle border small me-1"><t t-out="log.log_type"/></span>
+                                            <span class="text-white-50 small me-1" t-out="log.source_key or ''"/>
+                                            <span class="log_msg" t-out="log.message"/>
+                                        </div>
+                                    </t>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom History: Execution Runs Table -->
+                <div class="card border-0 shadow-sm mt-3" t-if="state.recentRuns.length">
+                    <div class="card-header bg-view py-2">
+                        <h6 class="m-0 fw-bold text-dark"><i class="fa fa-history me-2 text-primary"/> Recent Plan Runs</h6>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm m-0 align-middle">
+                            <thead class="table-light small text-uppercase">
+                                <tr>
+                                    <th>Reference</th>
+                                    <th>Mode</th>
+                                    <th>Status</th>
+                                    <th>Duration</th>
+                                    <th>Total Jobs</th>
+                                    <th>Total Records</th>
+                                    <th>Success</th>
+                                    <th>Errors</th>
+                                    <th>Summary</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="state.recentRuns" t-as="run" t-key="run.id">
+                                    <tr>
+                                        <td><strong class="text-primary" t-out="run.name"/></td>
+                                        <td>
+                                            <span t-att-class="'badge ' + (run.dry_run ? 'bg-warning text-dark' : 'bg-primary')">
+                                                <t t-if="run.dry_run">Dry-Run Simulation</t>
+                                                <t t-else="">Live Run</t>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span t-att-class="'badge ' + (run.state === 'done' ? 'bg-success' : (run.state === 'running' ? 'bg-primary' : 'bg-danger'))">
+                                                <t t-out="run.state"/>
+                                            </span>
+                                        </td>
+                                        <td><t t-out="run.duration_seconds"/>s</td>
+                                        <td><t t-out="run.total_jobs"/></td>
+                                        <td><t t-out="run.total_records"/></td>
+                                        <td class="text-success fw-bold"><t t-out="run.success_records"/></td>
+                                        <td class="text-danger fw-bold"><t t-out="run.error_records"/></td>
+                                        <td class="small text-muted text-truncate" style="max-width: 300px;"><t t-out="run.summary"/></td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </t>
+</templates>

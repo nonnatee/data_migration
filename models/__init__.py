@@ -9,3 +9,7 @@ from . import migration_transform_template_step
 from . import migration_job
 from . import migration_log
 from . import migration_record_map
+from . import migration_plan
+from . import migration_plan_stage
+from . import migration_plan_step
+from . import migration_plan_run

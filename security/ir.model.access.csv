@@ -16,3 +16,13 @@ access_migration_transform_template_user,migration.transform.template.user,model
 access_migration_transform_template_manager,migration.transform.template.manager,model_migration_transform_template,group_migration_manager,1,1,1,1
 access_migration_transform_template_step_user,migration.transform.template.step.user,model_migration_transform_template_step,group_migration_user,1,1,1,0
 access_migration_transform_template_step_manager,migration.transform.template.step.manager,model_migration_transform_template_step,group_migration_manager,1,1,1,1
+access_migration_plan_user,migration.plan.user,model_migration_plan,group_migration_user,1,1,1,0
+access_migration_plan_manager,migration.plan.manager,model_migration_plan,group_migration_manager,1,1,1,1
+access_migration_plan_stage_user,migration.plan.stage.user,model_migration_plan_stage,group_migration_user,1,1,1,0
+access_migration_plan_stage_manager,migration.plan.stage.manager,model_migration_plan_stage,group_migration_manager,1,1,1,1
+access_migration_plan_step_user,migration.plan.step.user,model_migration_plan_step,group_migration_user,1,1,1,0
+access_migration_plan_step_manager,migration.plan.step.manager,model_migration_plan_step,group_migration_manager,1,1,1,1
+access_migration_plan_run_user,migration.plan.run.user,model_migration_plan_run,group_migration_user,1,1,1,0
+access_migration_plan_run_manager,migration.plan.run.manager,model_migration_plan_run,group_migration_manager,1,1,1,1
+access_migration_plan_run_wizard_user,migration.plan.run.wizard.user,model_migration_plan_run_wizard,group_migration_user,1,1,1,1
+access_migration_plan_run_wizard_manager,migration.plan.run.wizard.manager,model_migration_plan_run_wizard,group_migration_manager,1,1,1,1

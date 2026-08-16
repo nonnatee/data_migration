@@ -66,6 +66,7 @@ class MigrationMappingLine(models.Model):
         ('field_search', 'Search Target Relation by Field'),
         ('domain_expr', 'Search Target Relation by Domain'),
         ('auto_create', 'Search and Auto-Create if Missing'),
+        ('record_map', 'Cross-Reference Record Map (Prior Stages)'),
     ], string='Relational Lookup Strategy', default='field_search')
     
     lookup_field_id = fields.Many2one(
@@ -198,6 +199,22 @@ class MigrationMappingLine(models.Model):
         self.ensure_one()
         return self.env['migration.transform.template'].create_preset_from_line(self, preset_name)
 
+    def _resolve_from_record_map(self, val):
+        """Resolves target record ID from migration.record.map cross-references."""
+        rel_model = self.relation_model
+        if not rel_model or not val:
+            return False
+        key = str(val).strip()
+        rec_map = self.env['migration.record.map'].search([
+            ('target_model', '=', rel_model),
+            ('source_key', '=', key),
+        ], order='id desc', limit=1)
+        if rec_map and rec_map.target_id:
+            # Check record actually exists in DB
+            target_rec = self.env[rel_model].browse(rec_map.target_id).exists()
+            return target_rec.id if target_rec else False
+        return False
+
     def _resolve_many2one(self, val):
         """Resolves Many2one target record ID."""
         rel_model = self.relation_model
@@ -206,7 +223,10 @@ class MigrationMappingLine(models.Model):
 
         rel_obj = self.env[rel_model]
 
-        if self.lookup_strategy == 'xml_id':
+        if self.lookup_strategy == 'record_map':
+            return self._resolve_from_record_map(val)
+
+        elif self.lookup_strategy == 'xml_id':
             # Format: module.xml_id
             xml_id = str(val).strip()
             if '.' not in xml_id:
@@ -245,7 +265,11 @@ class MigrationMappingLine(models.Model):
         match_field = self.lookup_field_id.name if self.lookup_field_id else 'name'
 
         for item in items:
-            if self.lookup_strategy == 'xml_id':
+            if self.lookup_strategy == 'record_map':
+                rec_id = self._resolve_from_record_map(item)
+                if rec_id:
+                    ids.append(rec_id)
+            elif self.lookup_strategy == 'xml_id':
                 xml_id = str(item).strip()
                 if '.' not in xml_id:
                     xml_id = f"__import__.{xml_id}"

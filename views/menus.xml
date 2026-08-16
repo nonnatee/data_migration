@@ -19,6 +19,12 @@
               parent="menu_migration_studio_root"
               sequence="10"/>
 
+    <menuitem id="menu_migration_plans"
+              name="Migration Plans"
+              parent="menu_migration_studio_config"
+              action="action_migration_plan"
+              sequence="5"/>
+
     <menuitem id="menu_migration_connections"
               name="Data Connections"
               parent="menu_migration_studio_config"
@@ -42,6 +48,12 @@
               name="Executions &amp; Audit"
               parent="menu_migration_studio_root"
               sequence="20"/>
+
+    <menuitem id="menu_migration_plan_runs"
+              name="Plan Runs"
+              parent="menu_migration_studio_execution"
+              action="action_migration_plan_run"
+              sequence="5"/>
 
     <menuitem id="menu_migration_jobs"
               name="Migration Jobs"

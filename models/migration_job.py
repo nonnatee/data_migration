@@ -76,7 +76,7 @@ class MigrationJob(models.Model):
             job._execute_job()
         return True
 
-    def _execute_job(self):
+    def _execute_job(self, limit=0):
         self.ensure_one()
         start_ts = time.time()
         self.write({
@@ -98,6 +98,8 @@ class MigrationJob(models.Model):
         # Step 1: Fetch source data rows
         try:
             records, columns = self.connection_id._fetch_raw_records()
+            if limit and limit > 0:
+                records = records[:limit]
         except Exception as e:
             self.write({
                 'state': 'failed',

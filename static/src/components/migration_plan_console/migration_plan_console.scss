@@ -1,0 +1,75 @@
+.o_migration_plan_console {
+    height: 100%;
+    overflow-y: auto;
+    background-color: var(--body-bg, #f8f9fa);
+
+    .console_header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .metric_card {
+        border-radius: 12px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08) !important;
+        }
+    }
+
+    .stage_card {
+        transition: all 0.2s ease;
+        &:hover {
+            border-color: var(--primary, #714b67) !important;
+        }
+    }
+
+    .stage_seq_badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background-color: #6c757d;
+        color: #fff;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+
+    .step_row {
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        transition: background-color 0.15s ease;
+        &:hover {
+            background-color: #f1f3f5 !important;
+        }
+    }
+
+    .console_log_card {
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .log_terminal_body {
+        height: 480px;
+        overflow-y: auto;
+        font-size: 0.82rem;
+        background-color: #1a1d20 !important;
+
+        .log_entry {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            word-break: break-all;
+        }
+    }
+
+    .btn-xs {
+        padding: 0.15rem 0.45rem;
+        font-size: 0.75rem;
+        border-radius: 4px;
+    }
+
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #714b67 0%, #017e84 100%) !important;
+    }
+}

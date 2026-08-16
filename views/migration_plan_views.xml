@@ -1,0 +1,459 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- MIGRATION PLAN: LIST, FORM, KANBAN, SEARCH                   -->
+    <!-- ============================================================ -->
+
+    <record id="view_migration_plan_list" model="ir.ui.view">
+        <field name="name">migration.plan.list</field>
+        <field name="model">migration.plan</field>
+        <field name="arch" type="xml">
+            <list string="Migration Plans"
+                  decoration-success="state == 'done'"
+                  decoration-warning="state == 'done_with_errors'"
+                  decoration-danger="state == 'failed'"
+                  decoration-info="state == 'running'">
+                <field name="sequence" widget="handle"/>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="stage_count"/>
+                <field name="step_count"/>
+                <field name="total_records"/>
+                <field name="success_records"/>
+                <field name="error_records"/>
+                <field name="progress_percent" widget="progressbar"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'done'"
+                       decoration-warning="state == 'done_with_errors'"
+                       decoration-danger="state == 'failed'"
+                       decoration-info="state == 'running'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_migration_plan_form" model="ir.ui.view">
+        <field name="name">migration.plan.form</field>
+        <field name="model">migration.plan</field>
+        <field name="arch" type="xml">
+            <form string="Multi-Stage Migration Plan">
+                <header>
+                    <button name="action_preflight_check"
+                            string="Pre-Flight Health Check"
+                            type="object"
+                            class="btn-secondary"
+                            icon="fa-check-circle"/>
+                    <button name="action_open_run_wizard"
+                            string="Execute Plan"
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-play"/>
+                    <button name="action_open_console"
+                            string="Live Console"
+                            type="object"
+                            class="btn-outline-primary"
+                            icon="fa-terminal"/>
+                    <button name="action_pause_plan"
+                            string="Pause"
+                            type="object"
+                            invisible="state != 'running'"
+                            class="btn-warning"/>
+                    <button name="action_reset_draft"
+                            string="Reset to Draft"
+                            type="object"
+                            invisible="state == 'draft'"
+                            class="btn-outline-secondary"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,running,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_runs"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-history">
+                            <field name="step_count" widget="statinfo" string="Steps / Runs"/>
+                        </button>
+                        <button name="action_view_record_maps"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-link">
+                            <field name="record_map_count" widget="statinfo" string="Cross Refs"/>
+                        </button>
+                    </div>
+
+                    <div class="oe_title">
+                        <span class="badge bg-secondary mb-2"><field name="code" readonly="1"/></span>
+                        <h1>
+                            <field name="name" placeholder="e.g. Master Data &amp; Product Catalog Migration"/>
+                        </h1>
+                    </div>
+
+                    <group>
+                        <group name="plan_config" string="Plan Configuration">
+                            <field name="default_error_policy"/>
+                            <field name="sequence"/>
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                        <group name="plan_metrics" string="Aggregated Progress">
+                            <field name="total_records" readonly="1"/>
+                            <field name="processed_records" readonly="1"/>
+                            <field name="success_records" readonly="1"/>
+                            <field name="error_records" readonly="1"/>
+                            <field name="progress_percent" widget="progressbar"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Stages &amp; Pipeline" name="stages">
+                            <field name="stage_ids">
+                                <list string="Migration Stages" editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="error_policy"/>
+                                    <field name="step_count"/>
+                                    <field name="total_records"/>
+                                    <field name="success_records"/>
+                                    <field name="error_records"/>
+                                    <field name="progress_percent" widget="progressbar"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'done'"
+                                           decoration-warning="state == 'done_with_errors'"
+                                           decoration-danger="state == 'failed'"
+                                           decoration-info="state == 'running'"/>
+                                    <button name="action_execute_stage"
+                                            type="object"
+                                            string="Run Stage"
+                                            icon="fa-play"
+                                            class="btn-xs btn-outline-primary"/>
+                                </list>
+                            </field>
+                        </page>
+
+                        <page string="Execution Runs" name="runs">
+                            <field name="run_ids" readonly="1">
+                                <list string="Execution Runs">
+                                    <field name="name"/>
+                                    <field name="dry_run" widget="boolean"/>
+                                    <field name="start_time"/>
+                                    <field name="duration_seconds"/>
+                                    <field name="total_jobs"/>
+                                    <field name="total_records"/>
+                                    <field name="success_records"/>
+                                    <field name="error_records"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'done'"
+                                           decoration-warning="state == 'done_with_errors'"
+                                           decoration-danger="state in ('failed', 'aborted')"
+                                           decoration-info="state == 'running'"/>
+                                    <button name="action_view_jobs"
+                                            type="object"
+                                            string="View Jobs"
+                                            icon="fa-list"
+                                            class="btn-xs btn-outline-secondary"/>
+                                </list>
+                            </field>
+                        </page>
+
+                        <page string="Description &amp; Notes" name="description">
+                            <field name="description" placeholder="Document migration objectives, source systems, data cutoff dates, and dependencies..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_migration_plan_kanban" model="ir.ui.view">
+        <field name="name">migration.plan.kanban</field>
+        <field name="model">migration.plan</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_dashboard" default_group_by="state">
+                <field name="id"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="state"/>
+                <field name="stage_count"/>
+                <field name="step_count"/>
+                <field name="progress_percent"/>
+                <field name="total_records"/>
+                <field name="success_records"/>
+                <field name="error_records"/>
+                <templates>
+                    <t t-name="card">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge bg-secondary"><field name="code"/></span>
+                            <span t-att-class="'badge ' + (record.state.raw_value === 'done' ? 'bg-success' : (record.state.raw_value === 'running' ? 'bg-primary' : (record.state.raw_value === 'failed' ? 'bg-danger' : 'bg-info')))">
+                                <field name="state"/>
+                            </span>
+                        </div>
+                        <div class="fw-bold fs-5 mb-2"><field name="name"/></div>
+                        <div class="text-muted small mb-2">
+                            <span><field name="stage_count"/> Stages</span> | 
+                            <span><field name="step_count"/> Steps</span>
+                        </div>
+                        <div class="mb-2">
+                            <field name="progress_percent" widget="progressbar"/>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center small border-top pt-2">
+                            <span>Success: <strong class="text-success"><field name="success_records"/></strong></span>
+                            <span>Errors: <strong class="text-danger"><field name="error_records"/></strong></span>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="view_migration_plan_search" model="ir.ui.view">
+        <field name="name">migration.plan.search</field>
+        <field name="model">migration.plan</field>
+        <field name="arch" type="xml">
+            <search string="Search Migration Plans">
+                <field name="name"/>
+                <field name="code"/>
+                <filter string="Active" name="active" domain="[('active', '=', True)]"/>
+                <filter string="Running" name="running" domain="[('state', '=', 'running')]"/>
+                <filter string="Completed" name="done" domain="[('state', '=', 'done')]"/>
+                <filter string="Has Errors" name="errors" domain="[('state', 'in', ('done_with_errors', 'failed'))]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Status" name="group_by_state" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- MIGRATION PLAN STAGE: FORM, LIST                             -->
+    <!-- ============================================================ -->
+
+    <record id="view_migration_plan_stage_form" model="ir.ui.view">
+        <field name="name">migration.plan.stage.form</field>
+        <field name="model">migration.plan.stage</field>
+        <field name="arch" type="xml">
+            <form string="Migration Stage">
+                <header>
+                    <button name="action_execute_stage" string="Run This Stage" type="object" class="btn-primary" icon="fa-play"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,running,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" string="Stage Name"/>
+                        <h1><field name="name" placeholder="e.g. 01 - Master Data"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="plan_id" readonly="1"/>
+                            <field name="sequence"/>
+                            <field name="error_policy"/>
+                        </group>
+                        <group>
+                            <field name="total_records" readonly="1"/>
+                            <field name="success_records" readonly="1"/>
+                            <field name="error_records" readonly="1"/>
+                            <field name="progress_percent" widget="progressbar"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Migration Steps" name="steps">
+                            <field name="step_ids">
+                                <list string="Steps" editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="template_id"/>
+                                    <field name="target_model_name"/>
+                                    <field name="error_policy"/>
+                                    <field name="sample_limit"/>
+                                    <field name="total_records"/>
+                                    <field name="success_records"/>
+                                    <field name="error_records"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'done'"
+                                           decoration-warning="state == 'done_with_errors'"
+                                           decoration-danger="state == 'failed'"
+                                           decoration-info="state == 'running'"/>
+                                    <button name="action_execute_step"
+                                            type="object"
+                                            string="Run Step"
+                                            icon="fa-play"
+                                            class="btn-xs btn-outline-primary"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Stage Description" name="desc">
+                            <field name="description" placeholder="Notes about prerequisites or sequencing for this stage..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- MIGRATION PLAN RUN: FORM, LIST                               -->
+    <!-- ============================================================ -->
+
+    <record id="view_migration_plan_run_list" model="ir.ui.view">
+        <field name="name">migration.plan.run.list</field>
+        <field name="model">migration.plan.run</field>
+        <field name="arch" type="xml">
+            <list string="Plan Execution Runs"
+                  decoration-success="state == 'done'"
+                  decoration-warning="state == 'done_with_errors'"
+                  decoration-danger="state in ('failed', 'aborted')"
+                  decoration-info="state == 'running'">
+                <field name="name"/>
+                <field name="plan_id"/>
+                <field name="dry_run" widget="boolean"/>
+                <field name="start_time"/>
+                <field name="end_time"/>
+                <field name="duration_seconds"/>
+                <field name="total_jobs"/>
+                <field name="total_records"/>
+                <field name="success_records"/>
+                <field name="error_records"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'done'"
+                       decoration-warning="state == 'done_with_errors'"
+                       decoration-danger="state in ('failed', 'aborted')"
+                       decoration-info="state == 'running'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_migration_plan_run_form" model="ir.ui.view">
+        <field name="name">migration.plan.run.form</field>
+        <field name="model">migration.plan.run</field>
+        <field name="arch" type="xml">
+            <form string="Plan Execution Run Audit">
+                <header>
+                    <field name="state" widget="statusbar" statusbar_visible="running,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_jobs"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-tasks">
+                            <field name="total_jobs" widget="statinfo" string="Jobs"/>
+                        </button>
+                        <button name="action_view_logs"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-file-text-o">
+                            <field name="error_records" widget="statinfo" string="Errors"/>
+                        </button>
+                    </div>
+
+                    <div class="oe_title">
+                        <span class="badge bg-secondary mb-2"><field name="name" readonly="1"/></span>
+                        <h1>
+                            <field name="plan_id" readonly="1"/>
+                        </h1>
+                    </div>
+
+                    <group>
+                        <group string="Execution Timing">
+                            <field name="dry_run" readonly="1"/>
+                            <field name="start_time" readonly="1"/>
+                            <field name="end_time" readonly="1"/>
+                            <field name="duration_seconds" readonly="1"/>
+                        </group>
+                        <group string="Record Metrics">
+                            <field name="total_records" readonly="1"/>
+                            <field name="success_records" readonly="1"/>
+                            <field name="error_records" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Executed ETL Jobs" name="jobs">
+                            <field name="job_ids" readonly="1">
+                                <list string="ETL Jobs">
+                                    <field name="name"/>
+                                    <field name="template_id"/>
+                                    <field name="target_model_name"/>
+                                    <field name="total_records"/>
+                                    <field name="success_records"/>
+                                    <field name="error_records"/>
+                                    <field name="progress_percent" widget="progressbar"/>
+                                    <field name="state" widget="badge"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Execution Summary" name="summary">
+                            <field name="summary" readonly="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- MIGRATION PLAN RUN WIZARD: FORM                              -->
+    <!-- ============================================================ -->
+
+    <record id="view_migration_plan_run_wizard_form" model="ir.ui.view">
+        <field name="name">migration.plan.run.wizard.form</field>
+        <field name="model">migration.plan.run.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Execute Migration Plan">
+                <sheet>
+                    <div class="alert alert-info" role="alert">
+                        <strong>Multi-Stage Orchestration:</strong> Each stage and step is executed with database savepoint error isolation.
+                    </div>
+                    <group>
+                        <field name="plan_id" readonly="1"/>
+                        <field name="mode" widget="radio"/>
+                        <field name="stage_id" invisible="mode != 'single_stage'" required="mode == 'single_stage'"/>
+                        <field name="step_id" invisible="mode != 'from_failed_step'" required="mode == 'from_failed_step'"/>
+                    </group>
+                    <group string="Execution Options">
+                        <group>
+                            <field name="dry_run" widget="boolean_toggle"/>
+                            <field name="sample_limit"/>
+                        </group>
+                        <group>
+                            <field name="error_policy_override"/>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_start_execution" string="Start Execution" type="object" class="btn-primary" icon="fa-play"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- WINDOW & CLIENT ACTIONS                                      -->
+    <!-- ============================================================ -->
+
+    <record id="action_migration_plan" model="ir.actions.act_window">
+        <field name="name">Migration Plans</field>
+        <field name="res_model">migration.plan</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first Multi-Stage Data Migration Plan!
+            </p>
+            <p>
+                Organize complex ERP migrations into sequential stages (e.g. Master Data &rarr; Products &rarr; Opening Balances &rarr; Orders), with automated cross-stage record mapping resolution.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_migration_plan_run" model="ir.actions.act_window">
+        <field name="name">Plan Execution Runs</field>
+        <field name="res_model">migration.plan.run</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_migration_plan_console" model="ir.actions.client">
+        <field name="name">Migration Plan Console</field>
+        <field name="tag">action_migration_plan_console</field>
+        <field name="target">main</field>
+    </record>
+
+</odoo>
