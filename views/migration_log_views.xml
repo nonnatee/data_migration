@@ -77,28 +77,6 @@
         </field>
     </record>
 
-    <record id="view_migration_log_search" model="ir.ui.view">
-        <field name="name">migration.log.search</field>
-        <field name="model">migration.log</field>
-        <field name="arch" type="xml">
-            <search string="Search Logs">
-                <field name="source_key"/>
-                <field name="job_id"/>
-                <field name="template_id"/>
-                <field name="log_type"/>
-                <separator/>
-                <filter string="Errors" name="errors" domain="[('log_type', '=', 'error')]"/>
-                <filter string="Warnings" name="warnings" domain="[('log_type', '=', 'warning')]"/>
-                <filter string="Success" name="success" domain="[('log_type', '=', 'success')]"/>
-                <group expand="0" string="Group By">
-                    <filter string="Log Type" name="group_by_type" context="{'group_by': 'log_type'}"/>
-                    <filter string="Job" name="group_by_job" context="{'group_by': 'job_id'}"/>
-                    <filter string="Template" name="group_by_template" context="{'group_by': 'template_id'}"/>
-                </group>
-            </search>
-        </field>
-    </record>
-
     <record id="action_migration_log" model="ir.actions.act_window">
         <field name="name">Migration Audit Logs</field>
         <field name="res_model">migration.log</field>

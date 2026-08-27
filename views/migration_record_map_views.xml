@@ -45,23 +45,6 @@
         </field>
     </record>
 
-    <record id="view_migration_record_map_search" model="ir.ui.view">
-        <field name="name">migration.record.map.search</field>
-        <field name="model">migration.record.map</field>
-        <field name="arch" type="xml">
-            <search string="Search Cross-Reference Maps">
-                <field name="source_key"/>
-                <field name="xml_id"/>
-                <field name="target_model"/>
-                <field name="template_id"/>
-                <group expand="0" string="Group By">
-                    <filter string="Template" name="group_by_template" context="{'group_by': 'template_id'}"/>
-                    <filter string="Target Model" name="group_by_model" context="{'group_by': 'target_model'}"/>
-                </group>
-            </search>
-        </field>
-    </record>
-
     <record id="action_migration_record_map" model="ir.actions.act_window">
         <field name="name">Mapped Records Cross-Reference</field>
         <field name="res_model">migration.record.map</field>
