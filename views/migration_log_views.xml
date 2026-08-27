@@ -83,10 +83,11 @@
         <field name="arch" type="xml">
             <search string="Search Logs">
                 <field name="source_key"/>
-                <field name="message"/>
                 <field name="job_id"/>
                 <field name="template_id"/>
-                <filter string="Errors Only" name="errors" domain="[('log_type', '=', 'error')]"/>
+                <field name="log_type"/>
+                <separator/>
+                <filter string="Errors" name="errors" domain="[('log_type', '=', 'error')]"/>
                 <filter string="Warnings" name="warnings" domain="[('log_type', '=', 'warning')]"/>
                 <filter string="Success" name="success" domain="[('log_type', '=', 'success')]"/>
                 <group expand="0" string="Group By">
@@ -102,6 +103,5 @@
         <field name="name">Migration Audit Logs</field>
         <field name="res_model">migration.log</field>
         <field name="view_mode">list,form</field>
-        <field name="search_view_id" ref="view_migration_log_search"/>
     </record>
 </odoo>
