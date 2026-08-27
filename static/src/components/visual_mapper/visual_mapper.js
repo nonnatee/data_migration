@@ -9,6 +9,8 @@ export class VisualMapperWidget extends Component {
     static props = {
         record: { type: Object, optional: true },
         resId: { type: Number, optional: true },
+        readonly: { type: Boolean, optional: true },
+        "*": true,
     };
 
     setup() {
@@ -79,8 +81,10 @@ export class VisualMapperWidget extends Component {
     }
 
     get resId() {
-        if (this.props.record && this.props.record.resId) {
-            return this.props.record.resId;
+        if (this.props.record) {
+            if (this.props.record.resId) return this.props.record.resId;
+            if (this.props.record.data && this.props.record.data.id) return this.props.record.data.id;
+            if (typeof this.props.record.id === "number") return this.props.record.id;
         }
         return this.props.resId || null;
     }
