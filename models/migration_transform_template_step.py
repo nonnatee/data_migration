@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from odoo import fields, models
+from odoo import api, fields, models
 
 
 class MigrationTransformTemplateStep(models.Model):
@@ -10,6 +10,7 @@ class MigrationTransformTemplateStep(models.Model):
 
     template_id = fields.Many2one('migration.transform.template', string='Preset Template', required=True, ondelete='cascade')
     sequence = fields.Integer(string='Sequence', default=10)
+    name = fields.Char(string='Step Name', compute='_compute_name', store=True, readonly=False)
 
     transform_category = fields.Selection([
         ('cleansing', 'Data Cleansing & Sanitization'),
@@ -158,3 +159,28 @@ class MigrationTransformTemplateStep(models.Model):
 
     # AI
     ai_prompt_template = fields.Text(string='AI Instruction Prompt')
+
+    @api.depends('transform_category', 'cleansing_type', 'unit_type', 'target_type', 'math_op')
+    def _compute_name(self):
+        for rec in self:
+            cat = rec.transform_category
+            if cat == 'cleansing':
+                rec.name = dict(rec._fields['cleansing_type'].selection).get(rec.cleansing_type, 'Cleanse')
+            elif cat == 'unit_conversion':
+                rec.name = f"Convert {rec.source_unit} -> {rec.target_unit}"
+            elif cat == 'type_conversion':
+                rec.name = f"Cast to {rec.target_type}"
+            elif cat == 'math_expr':
+                rec.name = f"Math: {rec.math_op}"
+            elif cat == 'date_format':
+                rec.name = f"Date: {rec.output_date_format}"
+            elif cat == 'slugify':
+                rec.name = "Slugify"
+            elif cat == 'case_when':
+                rec.name = "Case-When Rules"
+            elif cat == 'ai_prompt':
+                rec.name = "AI Transformer"
+            elif cat == 'python_expr':
+                rec.name = "Python Snippet"
+            else:
+                rec.name = dict(rec._fields['transform_category'].selection).get(cat, 'Transform')
