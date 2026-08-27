@@ -72,7 +72,7 @@ class MigrationJob(models.Model):
         return super().create(vals_list)
 
     # ------------------------------------------------------------
-    # 6-STAGE ETL EXECUTION ENGINE WITH SAVEPOINT ERROR ISOLATION
+    # 6-STAGE ETL EXECUTION ENGINE WITH SPLIT TRANSFORM & MAPPING
     # ------------------------------------------------------------
 
     def action_run_migration(self):
@@ -101,12 +101,12 @@ class MigrationJob(models.Model):
         key_lines = mapping_lines.filtered(lambda l: l.is_key_field)
 
         if not mapping_lines:
-            raise UserError(_("Mapping template '%s' has no field mapping rules defined.") % template.name)
+            raise UserError(_("Mapping template '%s' has no target field mappings configured.") % template.name)
 
         if target_model not in self.env:
             raise UserError(_("Target model '%s' does not exist in this Odoo system.") % target_model)
 
-        # STAGE 2: DATA EXTRACTION
+        # STAGE 2: EXTRACTION
         try:
             if template.extraction_id:
                 records, columns = template.extraction_id.execute_extraction(limit=limit or None)
@@ -146,7 +146,7 @@ class MigrationJob(models.Model):
 
         target_obj = self.env[target_model].with_context(ctx)
 
-        # STAGES 3, 4, 5, 6: TRANSFORMATION -> VALIDATION -> LOADING -> LOGGING
+        # STAGES 3, 4, 5: TRANSFORMATION -> VALIDATION -> MAPPING & LOADING
         for idx, row in enumerate(records):
             row_index = idx + 1
             source_key = self._extract_source_key(row, key_lines, row_index)
@@ -155,25 +155,11 @@ class MigrationJob(models.Model):
             # Savepoint per record to isolate failures completely
             try:
                 with self.env.cr.savepoint():
-                    # 1. Transformation
-                    transformed_vals, drop_row = self._apply_transformations(mapping_lines, row)
-                    if drop_row:
-                        skipped_cnt += 1
-                        processed += 1
-                        self.env['migration.log'].create({
-                            'job_id': self.id,
-                            'stage_name': stage_name or 'Transformation',
-                            'step_name': step_name or self.name,
-                            'row_number': row_index,
-                            'source_key': source_key,
-                            'log_type': 'info',
-                            'message': _("Row skipped due to null filter transformation."),
-                            'raw_data': json.dumps(row, default=str),
-                        })
-                        continue
+                    # 1. STAGE 3: DATA TRANSFORMATION (In-place cleansing & derived variables)
+                    clean_row = template._apply_transformation_stage(row)
 
-                    # 2. Pre-Load Validation
-                    val_passed, val_err_msg, val_action = self._validate_rules(pre_load_rules, transformed_vals, row)
+                    # 2. STAGE 4: VALIDATION (Evaluated on clean/derived record)
+                    val_passed, val_err_msg, val_action = self._validate_rules(pre_load_rules, clean_row, row)
                     if not val_passed:
                         if val_action == 'warning':
                             self.env['migration.log'].create({
@@ -185,7 +171,7 @@ class MigrationJob(models.Model):
                                 'log_type': 'warning',
                                 'message': _("Pre-Load Validation Warning: %s") % val_err_msg,
                                 'raw_data': json.dumps(row, default=str),
-                                'transformed_data': json.dumps(transformed_vals, default=str),
+                                'transformed_data': json.dumps(clean_row, default=str),
                             })
                         elif val_action == 'reject_record':
                             error_cnt += 1
@@ -199,21 +185,25 @@ class MigrationJob(models.Model):
                                 'log_type': 'error',
                                 'message': _("Pre-Load Validation Rejected Record: %s") % val_err_msg,
                                 'raw_data': json.dumps(row, default=str),
-                                'transformed_data': json.dumps(transformed_vals, default=str),
+                                'transformed_data': json.dumps(clean_row, default=str),
                             })
                             continue
                         elif val_action == 'abort_stage':
                             raise UserError(_("Validation Abort Triggered: %s") % val_err_msg)
 
-                    # 3. Data Loading (Upsert / Create / Update / Skip)
+                    # 3. STAGE 5: TARGET FIELD MAPPING & LOADING
+                    target_vals = template._apply_mapping_stage(clean_row)
+
                     res_status, target_id, log_msg = self._load_single_record(
-                        target_obj, template, mapping_lines, key_lines, transformed_vals, source_key, row_checksum, op_mode
+                        target_obj, template, mapping_lines, key_lines, target_vals, source_key, row_checksum, op_mode
                     )
 
                     # 4. Post-Load Verification
                     if target_id and post_load_rules:
                         target_rec = target_obj.browse(target_id)
-                        post_passed, post_err_msg, post_action = self._validate_rules(post_load_rules, target_rec.read()[0] if target_rec.exists() else {}, row)
+                        post_passed, post_err_msg, post_action = self._validate_rules(
+                            post_load_rules, target_rec.read()[0] if target_rec.exists() else {}, row
+                        )
                         if not post_passed:
                             self.env['migration.log'].create({
                                 'job_id': self.id,
@@ -237,7 +227,7 @@ class MigrationJob(models.Model):
                             'log_type': 'success',
                             'message': log_msg,
                             'target_record_id': target_id,
-                            'transformed_data': json.dumps(transformed_vals, default=str),
+                            'transformed_data': json.dumps(target_vals, default=str),
                         })
                     elif res_status == 'skipped':
                         skipped_cnt += 1
@@ -320,27 +310,12 @@ class MigrationJob(models.Model):
                 return str(row[cand]).strip()
         return f"ROW-{row_index}"
 
-    def _apply_transformations(self, mapping_lines, row):
-        """Applies field-level transformation pipelines to raw row."""
-        transformed = {}
-        for line in mapping_lines:
-            raw_val = row.get(line.source_field)
-            try:
-                converted_val = line.convert_value(raw_val, row)
-                if converted_val is not False or line.target_field_ttype == 'boolean':
-                    transformed[line.target_field_name] = converted_val
-            except UserError as ue:
-                if str(ue) == "__DROP_ROW_NULL__":
-                    return {}, True # Drop row
-                raise ue
-        return transformed, False
-
-    def _validate_rules(self, rules, transformed_vals, raw_record):
-        """Evaluates list of validation rules."""
+    def _validate_rules(self, rules, clean_record, raw_record):
+        """Evaluates list of validation rules against clean_record and raw_record."""
         for rule in rules:
             target_f = rule.target_field_name or rule.source_field
-            val = transformed_vals.get(target_f, raw_record.get(rule.source_field))
-            is_valid, err_msg = rule.evaluate_rule(val, raw_record)
+            val = clean_record.get(target_f, clean_record.get(rule.source_field, raw_record.get(rule.source_field)))
+            is_valid, err_msg = rule.evaluate_rule(val, clean_record)
             if not is_valid:
                 return False, err_msg, rule.action_on_failure
         return True, False, 'none'

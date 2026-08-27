@@ -10,7 +10,8 @@
                 <field name="connection_id"/>
                 <field name="target_model_id"/>
                 <field name="operation_mode"/>
-                <field name="batch_size"/>
+                <field name="transform_line_count" string="Transforms"/>
+                <field name="mapping_line_count" string="Mappings"/>
                 <field name="validation_rule_count" string="Validation Rules"/>
                 <field name="record_map_count" string="Mapped Records"/>
                 <field name="quality_score" widget="progressbar" string="Quality Health"/>
@@ -64,18 +65,99 @@
                     </group>
 
                     <notebook>
-                        <page string="Visual Diagram Mapper" name="visual_diagram">
+                        <page string="Visual Studio &amp; Mapper" name="visual_diagram">
                             <widget name="visual_mapper"/>
                         </page>
 
-                        <page string="Field Mapping Rules" name="mappings">
+                        <!-- STAGE 1: DATA TRANSFORMATION -->
+                        <page string="Stage 1: Data Transformations" name="transformations">
+                            <field name="transform_line_ids">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="source_field"/>
+                                    <field name="transform_category"/>
+                                    <field name="cleansing_type" invisible="transform_category != 'cleansing'"/>
+                                    <field name="unit_type" invisible="transform_category != 'unit_conversion'"/>
+                                    <field name="target_type" invisible="transform_category != 'type_conversion'"/>
+                                    <field name="math_op" invisible="transform_category != 'math_expr'"/>
+                                    <field name="output_field"/>
+                                    <field name="active" widget="boolean_toggle"/>
+                                </list>
+                                <form string="Transformation Rule Detail">
+                                    <group>
+                                        <group string="Variable Mapping">
+                                            <field name="sequence"/>
+                                            <field name="source_field"/>
+                                            <field name="output_field"/>
+                                            <field name="transform_category"/>
+                                            <field name="active"/>
+                                        </group>
+                                    </group>
+                                    <group string="Cleansing Settings" invisible="transform_category != 'cleansing'">
+                                        <field name="cleansing_type"/>
+                                        <field name="pad_char" invisible="cleansing_type not in ('pad_left', 'pad_right')"/>
+                                        <field name="pad_count" invisible="cleansing_type not in ('pad_left', 'pad_right')"/>
+                                        <field name="regex_pattern" invisible="cleansing_type not in ('regex', 'regex_extract')"/>
+                                        <field name="regex_replace" invisible="cleansing_type != 'regex'"/>
+                                        <field name="regex_group_index" invisible="cleansing_type != 'regex_extract'"/>
+                                        <field name="default_fallback" invisible="cleansing_type != 'handle_null'"/>
+                                    </group>
+                                    <group string="Date &amp; Time Settings" invisible="transform_category != 'date_format'">
+                                        <field name="input_date_format"/>
+                                        <field name="output_date_format"/>
+                                        <field name="tz_offset_hours"/>
+                                        <field name="date_math_days"/>
+                                    </group>
+                                    <group string="Unit Conversion Settings" invisible="transform_category != 'unit_conversion'">
+                                        <field name="unit_type"/>
+                                        <field name="source_unit" invisible="unit_type == 'custom'"/>
+                                        <field name="target_unit" invisible="unit_type == 'custom'"/>
+                                        <field name="custom_scale_ratio" invisible="unit_type != 'custom'"/>
+                                    </group>
+                                    <group string="Data Type Casting" invisible="transform_category != 'type_conversion'">
+                                        <field name="target_type"/>
+                                    </group>
+                                    <group string="Value Mapping Table" invisible="transform_category != 'value_map'">
+                                        <field name="value_mapping_json" widget="ace" options="{'mode': 'json'}"/>
+                                        <field name="default_fallback"/>
+                                    </group>
+                                    <group string="Math &amp; Arithmetic" invisible="transform_category != 'math_expr'">
+                                        <field name="math_op"/>
+                                        <field name="math_operand" invisible="math_op in ('round', 'abs')"/>
+                                        <field name="math_round_precision" invisible="math_op != 'round'"/>
+                                    </group>
+                                    <group string="String Substring / Split" invisible="transform_category != 'string_slice'">
+                                        <field name="slice_mode"/>
+                                        <field name="slice_start" invisible="slice_mode != 'slice'"/>
+                                        <field name="slice_end" invisible="slice_mode != 'slice'"/>
+                                        <field name="slice_length" invisible="slice_mode in ('slice', 'split')"/>
+                                        <field name="split_delimiter" invisible="slice_mode != 'split'"/>
+                                        <field name="split_index" invisible="slice_mode != 'split'"/>
+                                    </group>
+                                    <group string="Case-When Logic" invisible="transform_category != 'case_when'">
+                                        <field name="case_when_json" widget="ace" options="{'mode': 'json'}"/>
+                                        <field name="default_fallback"/>
+                                    </group>
+                                    <group string="Custom Python Expression" invisible="transform_category != 'python_expr'">
+                                        <field name="python_code" widget="ace" options="{'mode': 'python'}"/>
+                                        <field name="default_fallback"/>
+                                    </group>
+                                    <group string="AI Prompt NLP Transformer" invisible="transform_category != 'ai_prompt'">
+                                        <field name="ai_prompt_template" placeholder="e.g. Extract the province from this address: {value}"/>
+                                        <field name="default_fallback"/>
+                                    </group>
+                                </form>
+                            </field>
+                        </page>
+
+                        <!-- STAGE 2: TARGET FIELD MAPPING -->
+                        <page string="Stage 2: Field Mappings" name="mappings">
                             <field name="mapping_line_ids">
                                 <list editable="bottom" decoration-info="is_key_field == True">
                                     <field name="sequence" widget="handle"/>
                                     <field name="source_field"/>
                                     <field name="target_field_id" options="{'no_create': True}"/>
                                     <field name="target_field_ttype" optional="show"/>
-                                    <field name="transform_type"/>
                                     <field name="default_value" optional="hide"/>
                                     <field name="lookup_strategy" invisible="target_field_ttype not in ('many2one', 'many2many', 'one2many')"/>
                                     <field name="lookup_field_id" invisible="lookup_strategy not in ('field_search', 'auto_create')" options="{'no_create': True}"/>
@@ -83,42 +165,25 @@
                                 </list>
                                 <form string="Field Mapping Detail">
                                     <group>
-                                        <group string="Mapping Pair">
+                                        <group string="Mapping Configuration">
                                             <field name="source_field"/>
                                             <field name="target_field_id"/>
                                             <field name="target_field_ttype"/>
                                             <field name="relation_model" invisible="not relation_model"/>
                                             <field name="is_key_field"/>
-                                        </group>
-                                        <group string="Transformation Rule">
-                                            <field name="transform_type"/>
                                             <field name="default_value"/>
                                         </group>
-                                    </group>
-                                    <group string="Multi-Step Transformation Pipeline">
-                                        <field name="transform_ids" context="{'default_line_id': id}">
-                                            <list string="Transformation Steps">
-                                                <field name="sequence" widget="handle"/>
-                                                <field name="name"/>
-                                                <field name="transform_category"/>
-                                                <field name="cleansing_type" invisible="transform_category != 'cleansing'"/>
-                                                <field name="target_type" invisible="transform_category != 'type_conversion'"/>
-                                            </list>
-                                        </field>
-                                    </group>
-                                    <group string="Advanced Transformation Settings">
-                                        <field name="value_mapping_json" invisible="transform_type != 'value_map'"/>
-                                        <field name="python_code" invisible="transform_type != 'python_expr'" widget="ace" options="{'mode': 'python'}"/>
-                                    </group>
-                                    <group string="Relational Resolution" invisible="target_field_ttype not in ('many2one', 'many2many', 'one2many')">
-                                        <field name="lookup_strategy"/>
-                                        <field name="lookup_field_id" invisible="lookup_strategy not in ('field_search', 'auto_create')"/>
-                                        <field name="lookup_domain" invisible="lookup_strategy != 'domain_expr'"/>
+                                        <group string="Relational Resolution" invisible="target_field_ttype not in ('many2one', 'many2many', 'one2many')">
+                                            <field name="lookup_strategy"/>
+                                            <field name="lookup_field_id" invisible="lookup_strategy not in ('field_search', 'auto_create')"/>
+                                            <field name="lookup_domain" invisible="lookup_strategy != 'domain_expr'"/>
+                                        </group>
                                     </group>
                                 </form>
                             </field>
                         </page>
 
+                        <!-- STAGE 3: VALIDATION RULES -->
                         <page string="Validation Rules" name="validation_rules">
                             <field name="validation_rule_ids">
                                 <list editable="bottom">
@@ -200,7 +265,7 @@
                 Create your first Data Migration Template!
             </p>
             <p>
-                Map source columns to Odoo target fields, configure multi-step transformation pipelines, and define data validation rules.
+                Configure sequential Data Transformations (cleansing, math, derivations) and map clean variables to Odoo target fields.
             </p>
         </field>
     </record>

@@ -37,36 +37,71 @@ class MigrationTemplate(models.Model):
     bypass_subscription = fields.Boolean(string='Disable Auto-Followers', default=True,
                                          help='Prevents subscribing default followers during mass creation.')
 
-    # Mapping & Validation Lines
+    # Split Stages: Transformation Stage & Target Field Mapping Stage
+    transform_line_ids = fields.One2many('migration.transformation.line', 'template_id', string='Transformation Stage Rules', copy=True)
     mapping_line_ids = fields.One2many('migration.mapping.line', 'template_id', string='Field Mapping Rules', copy=True)
     validation_rule_ids = fields.One2many('migration.validation.rule', 'template_id', string='Validation Rules', copy=True)
     job_ids = fields.One2many('migration.job', 'template_id', string='Execution History')
 
-    record_map_count = fields.Integer(string='Mapped Records Count', compute='_compute_record_map_count')
-    validation_rule_count = fields.Integer(string='Validation Rules Count', compute='_compute_validation_rule_count')
+    transform_line_count = fields.Integer(string='Transformations Count', compute='_compute_stage_counts')
+    mapping_line_count = fields.Integer(string='Mappings Count', compute='_compute_stage_counts')
+    record_map_count = fields.Integer(string='Mapped Records Count', compute='_compute_stage_counts')
+    validation_rule_count = fields.Integer(string='Validation Rules Count', compute='_compute_stage_counts')
     quality_score = fields.Float(string='Data Quality Score (%)', default=100.0, readonly=True)
     quality_report = fields.Text(string='Quality Audit Report', readonly=True)
 
-    def _compute_record_map_count(self):
+    def _compute_stage_counts(self):
         for rec in self:
+            rec.transform_line_count = len(rec.transform_line_ids)
+            rec.mapping_line_count = len(rec.mapping_line_ids)
+            rec.validation_rule_count = len(rec.validation_rule_ids)
             rec.record_map_count = self.env['migration.record.map'].search_count([('template_id', '=', rec.id)])
 
-    def _compute_validation_rule_count(self):
-        for rec in self:
-            rec.validation_rule_count = len(rec.validation_rule_ids)
+    def get_available_source_variables(self):
+        """Returns list of all available variables (raw source columns + derived output variables)."""
+        self.ensure_one()
+        raw_cols = json.loads(self.connection_id.source_columns or '[]')
+        derived_cols = [t.output_field for t in self.transform_line_ids if t.output_field]
+        all_vars = list(dict.fromkeys(raw_cols + derived_cols))
+        return all_vars
 
     # ------------------------------------------------------------
-    # 1. AUTO MAPPING (HEURISTIC + AI)
+    # 1. TRANSFORMATION & MAPPING STAGE RUNNERS
+    # ------------------------------------------------------------
+
+    def _apply_transformation_stage(self, raw_row):
+        """Executes all transformation stage rules sequentially on a raw row dictionary."""
+        self.ensure_one()
+        clean_dict = dict(raw_row)
+        for tline in self.transform_line_ids.sorted('sequence'):
+            if not tline.active:
+                continue
+            tline.apply_transformation(clean_dict)
+        return clean_dict
+
+    def _apply_mapping_stage(self, clean_row):
+        """Maps clean record dictionary to target Odoo field values."""
+        self.ensure_one()
+        target_vals = {}
+        for mline in self.mapping_line_ids.sorted('sequence'):
+            val = mline.resolve_value(clean_row)
+            if val is not False or mline.target_field_ttype == 'boolean':
+                target_vals[mline.target_field_name] = val
+        return target_vals
+
+    # ------------------------------------------------------------
+    # 2. AUTO-MAPPING & AI ASSISTANTS
     # ------------------------------------------------------------
 
     def action_auto_map_fields(self):
-        """Standard heuristic matching of source columns to target model fields."""
+        """Standard heuristic matching of available source/derived variables to target model fields."""
         self.ensure_one()
-        if not self.connection_id.source_columns:
+        available_vars = self.get_available_source_variables()
+        if not available_vars:
             self.connection_id.action_test_connection()
+            available_vars = self.get_available_source_variables()
 
-        source_cols = json.loads(self.connection_id.source_columns or '[]')
-        if not source_cols:
+        if not available_vars:
             raise UserError(_("No source columns found in connection. Please test the connection first."))
 
         target_fields = self.env['ir.model.fields'].search([
@@ -78,47 +113,44 @@ class MigrationTemplate(models.Model):
         field_map = {f.name.lower(): f for f in target_fields}
         field_label_map = {f.field_description.lower(): f for f in target_fields}
 
-        existing_sources = set(self.mapping_line_ids.mapped('source_field'))
+        existing_targets = set(self.mapping_line_ids.mapped('target_field_id.id'))
         created_count = 0
 
-        for col in source_cols:
-            if col in existing_sources:
-                continue
+        for col in available_vars:
             col_clean = col.strip().lower().replace(' ', '_').replace('-', '_')
             match_field = field_map.get(col_clean) or field_label_map.get(col.strip().lower())
 
-            if match_field:
+            if match_field and match_field.id not in existing_targets:
                 self.env['migration.mapping.line'].create({
                     'template_id': self.id,
                     'source_field': col,
                     'target_field_id': match_field.id,
-                    'transform_type': 'direct',
                     'is_key_field': match_field.name in ('id', 'code', 'ref', 'default_code', 'email', 'vat'),
                 })
+                existing_targets.add(match_field.id)
                 created_count += 1
 
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': _('Auto Mapping Complete'),
-                'message': _('Auto-mapped %s fields matching model %s.', created_count, self.target_model_name),
+                'title': _('Auto-Mapping Completed'),
+                'message': _('Auto-mapped %d field pairs from %d available variables.', created_count, len(available_vars)),
                 'type': 'success',
+                'sticky': False,
             }
         }
 
     def action_ai_auto_map_fields(self):
-        """AI-powered semantic mapping of source columns to target Odoo fields."""
+        """Uses AI LLM to semantically match source variables to Odoo fields."""
         self.ensure_one()
         ai_config = self.env['migration.ai.config'].get_default_provider()
         if not ai_config:
-            raise UserError(_("No active AI provider configured. Please configure an AI Provider under ETL Setup -> AI Assistant."))
+            raise UserError(_("No AI Provider configured. Please configure an AI provider in AI Assistant Settings."))
 
-        if not self.connection_id.source_columns:
-            self.connection_id.action_test_connection()
-
-        source_cols = json.loads(self.connection_id.source_columns or '[]')
-        preview_data = json.loads(self.connection_id.preview_data or '[]')[:3]
+        available_vars = self.get_available_source_variables()
+        if not available_vars:
+            raise UserError(_("No source variables available to map."))
 
         target_fields = self.env['ir.model.fields'].search([
             ('model_id', '=', self.target_model_id.id),
@@ -126,416 +158,335 @@ class MigrationTemplate(models.Model):
             ('readonly', '=', False),
         ])
 
-        target_fields_info = [
-            {'name': f.name, 'description': f.field_description, 'type': f.ttype, 'required': f.required, 'relation': f.relation or ''}
-            for f in target_fields
-        ]
+        fields_meta = [{'name': f.name, 'description': f.field_description, 'type': f.ttype} for f in target_fields[:120]]
 
         prompt = f"""
-Given the following source columns and sample preview data from a legacy database:
-Source Columns: {json.dumps(source_cols)}
-Sample Rows: {json.dumps(preview_data, default=str)}
+Given the source variables: {json.dumps(available_vars)}
+And the target Odoo model '{self.target_model_name}' fields:
+{json.dumps(fields_meta)}
 
-Target Odoo 19 Model: '{self.target_model_name}'
-Available Target Fields:
-{json.dumps(target_fields_info, indent=2)}
-
-Task:
-Map each source column to the most semantically accurate target field.
-Return a JSON array of objects with the structure:
-[
-  {{
-    "source_field": "SourceColName",
-    "target_field_name": "target_odoo_field_name",
-    "is_key_field": true/false,
-    "confidence": 0.95,
-    "reason": "Brief rationale"
-  }}
-]
-Only include valid mappings where target_field_name exists in the available target fields list.
+Map each source variable to the most appropriate Odoo target field.
+Return a JSON array of mapping objects with keys:
+- "source_field": name of the source variable
+- "target_field": name of the Odoo field
+- "is_key_field": boolean (true if unique identifier)
 """
-        sys_prompt = "You are an AI ERP Data Architect specializing in Odoo database schemas. Return pure JSON array."
-        try:
-            mappings = ai_config.call_ai_completion(prompt, system_prompt=sys_prompt, json_mode=True)
-            if isinstance(mappings, dict) and 'mappings' in mappings:
-                mappings = mappings['mappings']
+        res = ai_config.call_ai_completion(prompt, json_mode=True)
+        mappings = res if isinstance(res, list) else (res.get('mappings') or res.get('items') or [])
+        created_cnt = 0
 
-            if not isinstance(mappings, list):
-                raise UserError(_("AI did not return a valid list of mappings."))
+        target_by_name = {f.name: f for f in target_fields}
+        existing_targets = set(self.mapping_line_ids.mapped('target_field_id.id'))
 
-            target_field_by_name = {f.name: f for f in target_fields}
-            existing_sources = set(self.mapping_line_ids.mapped('source_field'))
-            created_count = 0
+        for m in mappings:
+            src = m.get('source_field')
+            tf_name = m.get('target_field')
+            tf = target_by_name.get(tf_name)
+            if src and tf and tf.id not in existing_targets:
+                self.env['migration.mapping.line'].create({
+                    'template_id': self.id,
+                    'source_field': src,
+                    'target_field_id': tf.id,
+                    'is_key_field': bool(m.get('is_key_field', False)),
+                })
+                existing_targets.add(tf.id)
+                created_cnt += 1
 
-            for m in mappings:
-                s_col = m.get('source_field')
-                t_name = m.get('target_field_name')
-                if s_col in existing_sources or not s_col or not t_name:
-                    continue
-
-                t_field = target_field_by_name.get(t_name)
-                if t_field:
-                    self.env['migration.mapping.line'].create({
-                        'template_id': self.id,
-                        'source_field': s_col,
-                        'target_field_id': t_field.id,
-                        'is_key_field': bool(m.get('is_key_field', False)),
-                        'transform_type': 'direct',
-                    })
-                    created_count += 1
-
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _('AI Auto-Mapping Complete'),
-                    'message': _('AI created %d smart field mappings with high confidence for model %s.', created_count, self.target_model_name),
-                    'type': 'success',
-                }
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('AI Auto-Mapping Completed'),
+                'message': _('AI successfully mapped %d fields.', created_cnt),
+                'type': 'success',
+                'sticky': False,
             }
-        except Exception as e:
-            _logger.exception("AI Auto-Mapping failed on template %s", self.id)
-            raise UserError(_("AI Auto-Mapping failed: %s") % str(e))
-
-    # ------------------------------------------------------------
-    # 2. AI VALIDATION RULE SUGGESTER
-    # ------------------------------------------------------------
+        }
 
     def action_ai_suggest_validation_rules(self):
-        """AI analyzes target model constraints and source schema to suggest validation rules."""
+        """Uses AI to suggest data validation rules based on target model and schema."""
         self.ensure_one()
         ai_config = self.env['migration.ai.config'].get_default_provider()
         if not ai_config:
-            raise UserError(_("No active AI provider configured."))
+            raise UserError(_("No AI Provider configured."))
 
-        mappings = [{'source': l.source_field, 'target': l.target_field_name, 'type': l.target_field_ttype} for l in self.mapping_line_ids]
+        mappings_summary = [{'source': m.source_field, 'target': m.target_field_name, 'type': m.target_field_ttype} for m in self.mapping_line_ids]
+
         prompt = f"""
-Model: {self.target_model_name}
-Field Mappings: {json.dumps(mappings)}
+Target Odoo Model: {self.target_model_name}
+Field Mappings: {json.dumps(mappings_summary)}
 
-Suggest pre-load data validation rules (e.g. required/not-null checks for critical fields, email regex, positive pricing, phone format, foreign key existence).
-Return a JSON array with structure:
-[
-  {{
-    "name": "Non-empty Name",
-    "source_field": "name",
-    "rule_type": "mandatory|regex|numeric_range|value_in_set|foreign_key",
-    "regex_pattern": "",
-    "min_value": 0.0,
-    "max_value": 0.0,
-    "action_on_failure": "reject_record",
-    "error_message": "Custom error description"
-  }}
-]
+Analyze this ETL setup and suggest 3 to 6 essential validation rules (e.g. mandatory checks, email regex, price range >= 0).
+Output a JSON array of rule objects with keys:
+- "name": Rule Title
+- "source_field": Source column name
+- "rule_type": One of ('mandatory', 'regex', 'numeric_range', 'value_in_set', 'foreign_key')
+- "regex_pattern": string (if regex)
+- "min_value": float (if numeric_range)
+- "action_on_failure": One of ('warning', 'reject_record', 'abort_stage')
+- "error_message": User-friendly error text
 """
-        try:
-            suggested_rules = ai_config.call_ai_completion(prompt, json_mode=True)
-            if isinstance(suggested_rules, dict) and 'rules' in suggested_rules:
-                suggested_rules = suggested_rules['rules']
+        res = ai_config.call_ai_completion(prompt, json_mode=True)
+        rules = res if isinstance(res, list) else (res.get('rules') or res.get('items') or [])
+        created_cnt = 0
 
-            if not isinstance(suggested_rules, list):
-                raise UserError(_("AI did not return a valid list of validation rules."))
-
-            created_cnt = 0
-            for r in suggested_rules:
+        for r in rules:
+            src = r.get('source_field')
+            rtype = r.get('rule_type', 'mandatory')
+            if src:
                 self.env['migration.validation.rule'].create({
                     'template_id': self.id,
-                    'name': r.get('name', 'Validation Rule'),
-                    'source_field': r.get('source_field', ''),
-                    'rule_type': r.get('rule_type', 'mandatory') if r.get('rule_type') in ('mandatory', 'regex', 'numeric_range', 'value_in_set', 'foreign_key') else 'mandatory',
+                    'name': r.get('name', f"Check {src}"),
+                    'source_field': src,
+                    'rule_type': rtype if rtype in ('mandatory', 'regex', 'numeric_range', 'value_in_set', 'foreign_key') else 'mandatory',
                     'regex_pattern': r.get('regex_pattern', ''),
                     'min_value': float(r.get('min_value', 0.0)),
-                    'max_value': float(r.get('max_value', 999999.0)),
                     'action_on_failure': r.get('action_on_failure', 'reject_record'),
-                    'error_message': r.get('error_message', ''),
+                    'error_message': r.get('error_message', f"Validation failed on {src}"),
                 })
                 created_cnt += 1
 
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _('AI Validation Rules Created'),
-                    'message': _('Created %d validation rules automatically.', created_cnt),
-                    'type': 'success',
-                }
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('AI Validation Rules Created'),
+                'message': _('AI suggested and generated %d validation rules.', created_cnt),
+                'type': 'success',
+                'sticky': False,
             }
-        except Exception as e:
-            raise UserError(_("AI Rule Suggester failed: %s") % str(e))
-
-    # ------------------------------------------------------------
-    # 3. AI DATA QUALITY AUDIT & ANOMALY DETECTION
-    # ------------------------------------------------------------
+        }
 
     def action_audit_data_quality(self):
-        """Scans extracted source data to evaluate quality health score and detect anomalies."""
+        """Audits source data quality, computing a 0-100% health score and report."""
         self.ensure_one()
-        records, columns = self.connection_id._fetch_raw_records(limit=100)
+        records, cols = self.connection_id._fetch_raw_records(limit=200)
         if not records:
-            raise UserError(_("No data found in connection to audit."))
+            raise UserError(_("No records fetched from connection to audit."))
 
-        total_cells = len(records) * len(columns)
-        null_cells = 0
-        duplicate_keys = 0
-        key_fields = self.mapping_line_ids.filtered(lambda l: l.is_key_field).mapped('source_field')
+        total_rows = len(records)
+        issues = []
+        scores = []
 
-        seen_keys = set()
-        for r in records:
-            for c in columns:
-                if r.get(c) is None or str(r.get(c)).strip() == '':
-                    null_cells += 1
-            if key_fields:
-                key_val = '-'.join(str(r.get(k, '')).strip() for k in key_fields)
-                if key_val in seen_keys:
-                    duplicate_keys += 1
-                seen_keys.add(key_val)
+        # 1. Null ratio audit
+        for col in cols:
+            null_count = sum(1 for r in records if r.get(col) is None or str(r.get(col)).strip() == '')
+            null_pct = (null_count / total_rows) * 100.0
+            if null_pct > 30.0:
+                issues.append(f"Column '{col}' has {null_pct:.1f}% missing/null values.")
+                scores.append(max(0, 100.0 - null_pct))
+            else:
+                scores.append(100.0)
 
-        completeness_ratio = (total_cells - null_cells) / total_cells if total_cells > 0 else 1.0
-        dup_penalty = (duplicate_keys / len(records)) if records else 0.0
-        score = max(0.0, round((completeness_ratio - dup_penalty) * 100.0, 1))
+        # 2. Key duplicates audit
+        key_lines = self.mapping_line_ids.filtered(lambda l: l.is_key_field)
+        if key_lines:
+            keys = [str(r.get(key_lines[0].source_field, '')) for r in records if r.get(key_lines[0].source_field)]
+            dups = len(keys) - len(set(keys))
+            if dups > 0:
+                issues.append(f"Key column '{key_lines[0].source_field}' contains {dups} duplicate values in sample batch.")
+                scores.append(max(0, 100.0 - (dups / total_rows * 100.0)))
 
-        report_lines = [
-            f"📊 Data Quality Audit Summary for {self.name}",
-            f"• Sample Inspected: {len(records)} rows across {len(columns)} columns",
-            f"• Completeness Rate: {round(completeness_ratio * 100.0, 1)}% ({null_cells} empty cells)",
-            f"• Key Uniqueness: {len(records) - duplicate_keys}/{len(records)} unique ({duplicate_keys} duplicates detected)",
-            f"• Overall Health Score: {score}%",
-        ]
+        overall_score = round(sum(scores) / len(scores), 1) if scores else 100.0
+        report = f"Data Quality Audit for '{self.name}'\nSample Size: {total_rows} records\nOverall Health Score: {overall_score}%\n\n"
+        if issues:
+            report += "Detected Issues:\n" + "\n".join(f"• {i}" for i in issues)
+        else:
+            report += "All audited columns show high completeness and zero key collisions."
 
         self.write({
-            'quality_score': score,
-            'quality_report': "\n".join(report_lines),
+            'quality_score': overall_score,
+            'quality_report': report,
         })
 
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': _('Data Quality Audit: %s%%') % score,
-                'message': _("Sample audit complete. Completeness: %s%%, Duplicates: %d.") % (round(completeness_ratio * 100.0, 1), duplicate_keys),
-                'type': 'success' if score >= 80 else 'warning',
+                'title': _('Data Quality Audit Completed'),
+                'message': _('Data Health Score: %s%%. See report tab for breakdown.', overall_score),
+                'type': 'info',
+                'sticky': False,
             }
         }
 
     # ------------------------------------------------------------
-    # 4. VISUAL MAPPER SCHEMA DATA
+    # 3. INTERACTIVE VISUAL MAPPER DATA API
     # ------------------------------------------------------------
 
     def action_get_visual_mapping_data(self):
-        """Fetch visual diagram schema data for sources, targets, and active connections."""
+        """API endpoint providing schema, transformations, and mappings for Visual Mapper Widget."""
         self.ensure_one()
-        source_cols = []
-        if self.connection_id.source_columns:
-            try:
-                source_cols = json.loads(self.connection_id.source_columns)
-            except Exception:
-                source_cols = []
+        raw_cols = json.loads(self.connection_id.source_columns or '[]')
+        available_vars = self.get_available_source_variables()
 
-        target_fields = []
-        if self.target_model_id:
-            fields_rec = self.env['ir.model.fields'].search([
-                ('model_id', '=', self.target_model_id.id),
-                ('store', '=', True),
-                ('readonly', '=', False),
-            ], order='name asc')
-            for f in fields_rec:
-                target_fields.append({
-                    'id': f.id,
-                    'name': f.name,
-                    'field_description': f.field_description,
-                    'ttype': f.ttype,
-                    'relation': f.relation or '',
-                    'required': f.required,
-                })
+        target_fields = self.env['ir.model.fields'].search([
+            ('model_id', '=', self.target_model_id.id),
+            ('store', '=', True),
+            ('readonly', '=', False),
+        ], order='field_description asc, name asc')
 
-        lines = []
-        for l in self.mapping_line_ids:
-            transforms = []
-            for t in l.transform_ids.sorted('sequence'):
-                transforms.append({
-                    'id': t.id,
-                    'sequence': t.sequence,
-                    'transform_category': t.transform_category,
-                    'cleansing_type': t.cleansing_type,
-                    'pad_char': t.pad_char,
-                    'pad_count': t.pad_count,
-                    'regex_pattern': t.regex_pattern,
-                    'regex_replace': t.regex_replace,
-                    'regex_group_index': t.regex_group_index,
-                    'input_date_format': t.input_date_format,
-                    'output_date_format': t.output_date_format,
-                    'tz_offset_hours': t.tz_offset_hours,
-                    'date_math_days': t.date_math_days,
-                    'unit_type': t.unit_type,
-                    'source_unit': t.source_unit,
-                    'target_unit': t.target_unit,
-                    'custom_scale_ratio': t.custom_scale_ratio,
-                    'target_type': t.target_type,
-                    'value_mapping_json': t.value_mapping_json,
-                    'python_code': t.python_code,
-                    'default_fallback': t.default_fallback,
-                    'math_op': t.math_op,
-                    'math_operand': t.math_operand,
-                    'math_round_precision': t.math_round_precision,
-                    'slice_mode': t.slice_mode,
-                    'slice_start': t.slice_start,
-                    'slice_end': t.slice_end,
-                    'slice_length': t.slice_length,
-                    'split_delimiter': t.split_delimiter,
-                    'split_index': t.split_index,
-                    'case_when_json': t.case_when_json,
-                    'ai_prompt_template': t.ai_prompt_template,
-                    'name': t.name,
-                })
+        target_fields_data = [{
+            'id': f.id,
+            'name': f.name,
+            'field_description': f.field_description or f.name,
+            'ttype': f.ttype,
+            'relation': f.relation or '',
+            'required': f.required,
+        } for f in target_fields]
 
-            lines.append({
-                'id': l.id,
-                'source_field': l.source_field,
-                'target_field_id': l.target_field_id.id,
-                'target_field_name': l.target_field_name,
-                'target_field_ttype': l.target_field_ttype,
-                'is_key_field': l.is_key_field,
-                'transform_type': l.transform_type,
-                'default_value': l.default_value,
-                'lookup_strategy': l.lookup_strategy,
-                'lookup_field_id': l.lookup_field_id.id if l.lookup_field_id else False,
-                'transforms': transforms,
-            })
+        transform_data = [{
+            'id': t.id,
+            'sequence': t.sequence,
+            'name': t.name,
+            'source_field': t.source_field,
+            'output_field': t.output_field,
+            'transform_category': t.transform_category,
+            'cleansing_type': t.cleansing_type,
+            'pad_char': t.pad_char,
+            'pad_count': t.pad_count,
+            'regex_pattern': t.regex_pattern,
+            'regex_replace': t.regex_replace,
+            'input_date_format': t.input_date_format,
+            'output_date_format': t.output_date_format,
+            'unit_type': t.unit_type,
+            'source_unit': t.source_unit,
+            'target_unit': t.target_unit,
+            'custom_scale_ratio': t.custom_scale_ratio,
+            'target_type': t.target_type,
+            'value_mapping_json': t.value_mapping_json,
+            'python_code': t.python_code,
+            'default_fallback': t.default_fallback,
+            'math_op': t.math_op,
+            'math_operand': t.math_operand,
+            'math_round_precision': t.math_round_precision,
+            'slice_mode': t.slice_mode,
+            'slice_start': t.slice_start,
+            'slice_end': t.slice_end,
+            'slice_length': t.slice_length,
+            'split_delimiter': t.split_delimiter,
+            'split_index': t.split_index,
+            'case_when_json': t.case_when_json,
+            'ai_prompt_template': t.ai_prompt_template,
+        } for t in self.transform_line_ids.sorted('sequence')]
 
-        presets = []
-        preset_recs = self.env['migration.transform.template'].search([('active', '=', True)])
-        for p in preset_recs:
-            presets.append({
-                'id': p.id,
-                'name': p.name,
-                'category': p.category,
-                'description': p.description or '',
-                'step_count': p.step_count,
-            })
+        mapping_data = [{
+            'id': m.id,
+            'sequence': m.sequence,
+            'source_field': m.source_field,
+            'target_field_id': m.target_field_id.id,
+            'target_field_name': m.target_field_name,
+            'target_field_ttype': m.target_field_ttype,
+            'default_value': m.default_value or '',
+            'is_key_field': m.is_key_field,
+            'lookup_strategy': m.lookup_strategy or 'field_search',
+            'lookup_field_id': m.lookup_field_id.id if m.lookup_field_id else False,
+            'lookup_domain': m.lookup_domain or '',
+        } for m in self.mapping_line_ids.sorted('sequence')]
+
+        presets = self.env['migration.transform.template'].search([])
+        presets_data = [{
+            'id': p.id,
+            'name': p.name,
+            'category': p.category,
+            'step_count': p.step_count,
+        } for p in presets]
 
         return {
             'template_id': self.id,
             'template_name': self.name,
             'connection_name': self.connection_id.name,
             'target_model_name': self.target_model_name,
-            'source_columns': source_cols,
-            'target_fields': target_fields,
-            'mapping_lines': lines,
-            'transform_presets': presets,
+            'raw_columns': raw_cols,
+            'available_variables': available_vars,
+            'target_fields': target_fields_data,
+            'transformations': transform_data,
+            'mappings': mapping_data,
+            'transform_presets': presets_data,
         }
 
-    def action_save_visual_mapping(self, mapping_data):
-        """Saves updated mappings and transformation steps from visual diagram interface."""
+    def action_save_visual_mapping_data(self, transformations, mappings):
+        """Saves transformations and mappings submitted from the OWL 3 Visual Mapper."""
         self.ensure_one()
-        LineObj = self.env['migration.mapping.line']
-        TransformObj = self.env['migration.mapping.transform']
 
-        existing_line_ids = set(self.mapping_line_ids.ids)
-        kept_line_ids = set()
-
-        for item in mapping_data:
-            line_id = item.get('id')
-            line_vals = {
+        # 1. Update Transformations Stage
+        self.transform_line_ids.unlink()
+        for idx, t in enumerate(transformations):
+            self.env['migration.transformation.line'].create({
                 'template_id': self.id,
-                'source_field': item.get('source_field'),
-                'target_field_id': item.get('target_field_id'),
-                'is_key_field': item.get('is_key_field', False),
-                'transform_type': item.get('transform_type', 'direct'),
-                'default_value': item.get('default_value', ''),
-                'lookup_strategy': item.get('lookup_strategy', 'field_search'),
-                'lookup_field_id': item.get('lookup_field_id', False),
-            }
+                'sequence': (idx + 1) * 10,
+                'source_field': t.get('source_field'),
+                'output_field': t.get('output_field') or t.get('source_field'),
+                'transform_category': t.get('transform_category', 'cleansing'),
+                'cleansing_type': t.get('cleansing_type', 'trim'),
+                'pad_char': t.get('pad_char', '0'),
+                'pad_count': t.get('pad_count', 10),
+                'regex_pattern': t.get('regex_pattern', ''),
+                'regex_replace': t.get('regex_replace', ''),
+                'input_date_format': t.get('input_date_format', '%Y-%m-%d'),
+                'output_date_format': t.get('output_date_format', '%Y-%m-%d'),
+                'unit_type': t.get('unit_type', 'mass'),
+                'source_unit': t.get('source_unit', 'kg'),
+                'target_unit': t.get('target_unit', 'lb'),
+                'custom_scale_ratio': t.get('custom_scale_ratio', 1.0),
+                'target_type': t.get('target_type', 'string'),
+                'value_mapping_json': t.get('value_mapping_json', '{}'),
+                'python_code': t.get('python_code', ''),
+                'default_fallback': t.get('default_fallback', ''),
+                'math_op': t.get('math_op', 'add'),
+                'math_operand': t.get('math_operand', 0.0),
+                'math_round_precision': t.get('math_round_precision', 2),
+                'slice_mode': t.get('slice_mode', 'slice'),
+                'slice_start': t.get('slice_start', 0),
+                'slice_end': t.get('slice_end', 10),
+                'slice_length': t.get('slice_length', 5),
+                'split_delimiter': t.get('split_delimiter', ','),
+                'split_index': t.get('split_index', 0),
+                'case_when_json': t.get('case_when_json', '[]'),
+                'ai_prompt_template': t.get('ai_prompt_template', ''),
+            })
 
-            if line_id and isinstance(line_id, int):
-                line_rec = LineObj.browse(line_id)
-                line_rec.write(line_vals)
-                kept_line_ids.add(line_id)
-            else:
-                line_rec = LineObj.create(line_vals)
-                kept_line_ids.add(line_rec.id)
-
-            transforms_data = item.get('transforms', [])
-            existing_t_ids = set(line_rec.transform_ids.ids)
-            kept_t_ids = set()
-
-            for seq, t_item in enumerate(transforms_data, 1):
-                t_id = t_item.get('id')
-                t_vals = {
-                    'line_id': line_rec.id,
-                    'sequence': seq * 10,
-                    'transform_category': t_item.get('transform_category', 'cleansing'),
-                    'cleansing_type': t_item.get('cleansing_type', 'trim'),
-                    'pad_char': t_item.get('pad_char', '0'),
-                    'pad_count': t_item.get('pad_count', 10),
-                    'regex_pattern': t_item.get('regex_pattern', ''),
-                    'regex_replace': t_item.get('regex_replace', ''),
-                    'regex_group_index': t_item.get('regex_group_index', 1),
-                    'input_date_format': t_item.get('input_date_format', '%Y-%m-%d'),
-                    'output_date_format': t_item.get('output_date_format', '%Y-%m-%d'),
-                    'tz_offset_hours': t_item.get('tz_offset_hours', 0.0),
-                    'date_math_days': t_item.get('date_math_days', 0),
-                    'unit_type': t_item.get('unit_type', 'mass'),
-                    'source_unit': t_item.get('source_unit', 'kg'),
-                    'target_unit': t_item.get('target_unit', 'lb'),
-                    'custom_scale_ratio': t_item.get('custom_scale_ratio', 1.0),
-                    'target_type': t_item.get('target_type', 'string'),
-                    'value_mapping_json': t_item.get('value_mapping_json', '{}'),
-                    'python_code': t_item.get('python_code', ''),
-                    'default_fallback': t_item.get('default_fallback', ''),
-                    'math_op': t_item.get('math_op', 'add'),
-                    'math_operand': t_item.get('math_operand', 0.0),
-                    'math_round_precision': t_item.get('math_round_precision', 2),
-                    'slice_mode': t_item.get('slice_mode', 'slice'),
-                    'slice_start': t_item.get('slice_start', 0),
-                    'slice_end': t_item.get('slice_end', 10),
-                    'slice_length': t_item.get('slice_length', 5),
-                    'split_delimiter': t_item.get('split_delimiter', ','),
-                    'split_index': t_item.get('split_index', 0),
-                    'case_when_json': t_item.get('case_when_json', '[]'),
-                    'ai_prompt_template': t_item.get('ai_prompt_template', ''),
-                }
-
-                if t_id and isinstance(t_id, int):
-                    t_rec = TransformObj.browse(t_id)
-                    t_rec.write(t_vals)
-                    kept_t_ids.add(t_id)
-                else:
-                    t_rec = TransformObj.create(t_vals)
-                    kept_t_ids.add(t_rec.id)
-
-            removed_t = existing_t_ids - kept_t_ids
-            if removed_t:
-                TransformObj.browse(list(removed_t)).unlink()
-
-        removed_lines = existing_line_ids - kept_line_ids
-        if removed_lines:
-            LineObj.browse(list(removed_lines)).unlink()
+        # 2. Update Target Field Mappings Stage
+        self.mapping_line_ids.unlink()
+        for idx, m in enumerate(mappings):
+            tf_id = m.get('target_field_id')
+            src = m.get('source_field')
+            if tf_id and src:
+                self.env['migration.mapping.line'].create({
+                    'template_id': self.id,
+                    'sequence': (idx + 1) * 10,
+                    'source_field': src,
+                    'target_field_id': int(tf_id),
+                    'default_value': m.get('default_value', ''),
+                    'is_key_field': bool(m.get('is_key_field', False)),
+                    'lookup_strategy': m.get('lookup_strategy', 'field_search'),
+                    'lookup_field_id': int(m.get('lookup_field_id')) if m.get('lookup_field_id') else False,
+                    'lookup_domain': m.get('lookup_domain', ''),
+                })
 
         return True
 
-    def action_view_record_mappings(self):
-        """View persistent cross-reference mapping records for this template."""
-        self.ensure_one()
-        return {
-            'name': _('Mapped Records (%s)') % self.name,
-            'type': 'ir.actions.act_window',
-            'res_model': 'migration.record.map',
-            'view_mode': 'list,form',
-            'domain': [('template_id', '=', self.id)],
-            'context': {'default_template_id': self.id},
-        }
-
     def action_open_run_wizard(self):
-        """Open Migration Run Wizard."""
+        """Opens quick execution wizard for this template."""
         self.ensure_one()
         return {
-            'name': _('Execute Migration Job'),
+            'name': _('Run Migration Job: %s') % self.name,
             'type': 'ir.actions.act_window',
             'res_model': 'migration.run.wizard',
             'view_mode': 'form',
             'target': 'new',
             'context': {
                 'default_template_id': self.id,
-                'default_connection_id': self.connection_id.id,
             }
+        }
+
+    def action_view_record_mappings(self):
+        self.ensure_one()
+        return {
+            'name': _('Cross-Reference Records: %s') % self.name,
+            'type': 'ir.actions.act_window',
+            'res_model': 'migration.record.map',
+            'view_mode': 'list,form',
+            'domain': [('template_id', '=', self.id)],
+            'context': {'default_template_id': self.id},
         }

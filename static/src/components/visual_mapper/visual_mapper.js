@@ -24,60 +24,53 @@ export class VisualMapperWidget extends Component {
         this.state = useState({
             isLoading: true,
             isSaving: false,
+            activeMode: "transform", // 'transform' or 'mapping'
             templateId: null,
             templateName: "",
             connectionName: "",
             targetModelName: "",
-            sourceColumns: [],
+            rawColumns: [],
+            availableVariables: [],
             targetFields: [],
-            mappingLines: [],
+            transformations: [],
+            mappings: [],
             transformPresets: [],
-            
-            // Filters
+
+            // Filter queries
             sourceSearch: "",
             targetSearch: "",
-            filterMode: "all", // 'all', 'mapped', 'unmapped'
-            
-            // Selected state
+
+            // Selection
             selectedSourceCol: null,
-            selectedLineIndex: null,
+            selectedTransformIndex: 0,
             selectedPresetId: "",
 
-            // Drag and Drop state
-            isDraggingLink: false,
+            // Drag and drop state for mapping mode
             dragSourceCol: null,
             dragOverTargetId: null,
             dragMousePos: { x: 0, y: 0 },
 
-            // Live preview
+            // Interactive test sandbox
             sampleInput: " 150.50 lbs ",
             sampleResult: null,
             isTestingSample: false,
-
-            // New step drafting
-            newStepCategory: "cleansing",
-            
-            // Scroll optimization state
-            isScrolling: false,
         });
-
-        this.scrollTimeout = null;
 
         onWillStart(async () => {
             await this.loadData();
         });
 
         onMounted(() => {
-            this.updateSvgLines();
+            this.onResizeBound = () => this.updateSvgLines();
             window.addEventListener("resize", this.onResizeBound);
+            this.updateSvgLines();
         });
 
         onWillUnmount(() => {
-            window.removeEventListener("resize", this.onResizeBound);
-            if (this.scrollTimeout) clearTimeout(this.scrollTimeout);
+            if (this.onResizeBound) {
+                window.removeEventListener("resize", this.onResizeBound);
+            }
         });
-
-        this.onResizeBound = () => this.updateSvgLines();
     }
 
     get resId() {
@@ -102,17 +95,19 @@ export class VisualMapperWidget extends Component {
             this.state.templateName = data.template_name;
             this.state.connectionName = data.connection_name;
             this.state.targetModelName = data.target_model_name;
-            this.state.sourceColumns = data.source_columns || [];
+            this.state.rawColumns = data.raw_columns || [];
             this.state.targetFields = data.target_fields || [];
-            this.state.mappingLines = data.mapping_lines || [];
+            this.state.transformations = data.transformations || [];
+            this.state.mappings = data.mappings || [];
             this.state.transformPresets = data.transform_presets || [];
 
-            if (this.state.mappingLines.length > 0) {
-                this.state.selectedLineIndex = 0;
-                this.state.selectedSourceCol = this.state.mappingLines[0].source_field;
+            this.updateDerivedVariables();
+
+            if (this.state.rawColumns.length > 0 && !this.state.selectedSourceCol) {
+                this.state.selectedSourceCol = this.state.rawColumns[0];
             }
         } catch (err) {
-            console.error("Failed to load visual mapping data:", err);
+            console.error("Failed to load visual mapper data:", err);
             this.notification.add(`Error loading data: ${err.message || err}`, { type: "danger" });
         } finally {
             this.state.isLoading = false;
@@ -120,268 +115,66 @@ export class VisualMapperWidget extends Component {
         }
     }
 
-    get mappedSourceCount() {
-        return this.state.sourceColumns.filter(c => this.isSourceMapped(c)).length;
-    }
-
-    get unmappedSourceCount() {
-        return this.state.sourceColumns.length - this.mappedSourceCount;
-    }
-
-    get filteredSourceColumns() {
-        let cols = this.state.sourceColumns;
-        if (this.state.filterMode === "mapped") {
-            cols = cols.filter(c => this.isSourceMapped(c));
-        } else if (this.state.filterMode === "unmapped") {
-            cols = cols.filter(c => !this.isSourceMapped(c));
+    switchMode(mode) {
+        this.state.activeMode = mode;
+        this.updateDerivedVariables();
+        if (mode === "mapping") {
+            setTimeout(() => this.updateSvgLines(), 100);
         }
+    }
 
+    updateDerivedVariables() {
+        const raw = this.state.rawColumns || [];
+        const derived = this.state.transformations
+            .map(t => (t.output_field || "").trim())
+            .filter(f => f.length > 0);
+        this.state.availableVariables = Array.from(new Set([...raw, ...derived]));
+    }
+
+    isVariableDerived(varName) {
+        return !this.state.rawColumns.includes(varName);
+    }
+
+    isSourceMapped(varName) {
+        return this.state.mappings.some(m => m.source_field === varName);
+    }
+
+    getMappingForField(targetFieldId) {
+        return this.state.mappings.find(m => m.target_field_id === targetFieldId);
+    }
+
+    get filteredRawColumns() {
+        let cols = this.state.rawColumns;
         if (!this.state.sourceSearch) return cols;
         const q = this.state.sourceSearch.toLowerCase();
         return cols.filter(c => c.toLowerCase().includes(q));
     }
 
+    get filteredAvailableVariables() {
+        let vars = this.state.availableVariables;
+        if (!this.state.sourceSearch) return vars;
+        const q = this.state.sourceSearch.toLowerCase();
+        return vars.filter(v => v.toLowerCase().includes(q));
+    }
+
     get filteredTargetFields() {
         let fields = this.state.targetFields;
-        if (this.state.filterMode === "mapped") {
-            fields = fields.filter(f => this.isTargetMapped(f.id));
-        } else if (this.state.filterMode === "unmapped") {
-            fields = fields.filter(f => !this.isTargetMapped(f.id));
-        }
-
         if (!this.state.targetSearch) return fields;
         const q = this.state.targetSearch.toLowerCase();
-        return fields.filter(f => 
-            f.name.toLowerCase().includes(q) || 
-            (f.field_description && f.field_description.toLowerCase().includes(q))
-        );
+        return fields.filter(f => (f.name && f.name.toLowerCase().includes(q)) || (f.field_description && f.field_description.toLowerCase().includes(q)));
     }
 
-    get activeLine() {
-        if (this.state.selectedLineIndex !== null && this.state.selectedLineIndex >= 0 && this.state.selectedLineIndex < this.state.mappingLines.length) {
-            return this.state.mappingLines[this.state.selectedLineIndex];
-        }
-        return null;
-    }
+    // ------------------------------------------------------------
+    // MODE 1: TRANSFORMATION STUDIO METHODS
+    // ------------------------------------------------------------
 
-    setFilterMode(mode) {
-        this.state.filterMode = mode;
-        setTimeout(() => this.updateSvgLines(), 50);
-    }
-
-    // --- Drag and Drop Handlers ---
-
-    onSourceDragStart(event, col) {
-        this.state.isDraggingLink = true;
-        this.state.dragSourceCol = col;
-        this.selectSource(col);
-
-        if (event.dataTransfer) {
-            event.dataTransfer.effectAllowed = "link";
-            event.dataTransfer.setData("text/plain", col);
-        }
-    }
-
-    onCanvasMouseMove(event) {
-        if (!this.state.isDraggingLink || !this.containerRef.el) return;
-        const containerRect = this.containerRef.el.getBoundingClientRect();
-        this.state.dragMousePos = {
-            x: event.clientX - containerRect.left,
-            y: event.clientY - containerRect.top,
-        };
-        this.updateSvgLines();
-    }
-
-    onTargetDragOver(event, targetField) {
-        if (!this.state.isDraggingLink) return;
-        event.preventDefault();
-        if (event.dataTransfer) {
-            event.dataTransfer.dropEffect = "link";
-        }
-        this.state.dragOverTargetId = targetField.id;
-    }
-
-    onTargetDrop(event, targetField) {
-        if (!this.state.isDraggingLink || !this.state.dragSourceCol) return;
-        event.preventDefault();
-        
-        const sourceCol = this.state.dragSourceCol;
-        this.selectSource(sourceCol);
-        this.selectTarget(targetField);
-
-        this.onDragEnd();
-    }
-
-    onDragEnd() {
-        this.state.isDraggingLink = false;
-        this.state.dragSourceCol = null;
-        this.state.dragOverTargetId = null;
-        this.updateSvgLines();
-    }
-
-    // --- Scroll Optimization ---
-
-    onListScroll() {
-        this.state.isScrolling = true;
-        if (this.svgRef.el) {
-            this.svgRef.el.style.opacity = "0.3";
-        }
-
-        if (this.scrollTimeout) clearTimeout(this.scrollTimeout);
-        this.scrollTimeout = setTimeout(() => {
-            this.state.isScrolling = false;
-            if (this.svgRef.el) {
-                this.svgRef.el.style.opacity = "1";
-            }
-            this.updateSvgLines();
-        }, 120);
-    }
-
-    // --- Batch Toolbar Actions ---
-
-    autoMapMatching() {
-        if (!this.state.sourceColumns || !this.state.targetFields) return;
-        
-        const fieldMap = {};
-        const fieldLabelMap = {};
-        this.state.targetFields.forEach(f => {
-            fieldMap[f.name.toLowerCase()] = f;
-            if (f.field_description) {
-                fieldLabelMap[f.field_description.toLowerCase()] = f;
-            }
-        });
-
-        let createdCount = 0;
-        this.state.sourceColumns.forEach(col => {
-            if (this.isSourceMapped(col)) return;
-
-            const colClean = col.strip ? col.strip().toLowerCase().replace(/ /g, '_').replace(/-/g, '_') : col.toLowerCase().replace(/ /g, '_');
-            const matchField = fieldMap[colClean] || fieldLabelMap[col.toLowerCase()];
-
-            if (matchField) {
-                this.state.mappingLines.push({
-                    id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-                    source_field: col,
-                    target_field_id: matchField.id,
-                    target_field_name: matchField.name,
-                    target_field_ttype: matchField.ttype,
-                    is_key_field: ["id", "code", "ref", "email", "vat"].includes(matchField.name),
-                    transform_type: "direct",
-                    default_value: "",
-                    lookup_strategy: "field_search",
-                    transforms: [
-                        {
-                            id: `temp_t_${Date.now()}`,
-                            sequence: 10,
-                            transform_category: "cleansing",
-                            cleansing_type: "trim",
-                            name: "Cleanse: Trim Whitespace",
-                        }
-                    ]
-                });
-                createdCount++;
-            }
-        });
-
-        if (createdCount > 0) {
-            this.notification.add(`Auto-mapped ${createdCount} matching fields!`, { type: "success" });
-            this.updateSvgLines();
-        } else {
-            this.notification.add("No additional matching field names found.", { type: "info" });
-        }
-    }
-
-    clearAllMappings() {
-        if (confirm("Are you sure you want to clear all current field mapping links?")) {
-            this.state.mappingLines = [];
-            this.state.selectedLineIndex = null;
-            this.state.selectedSourceCol = null;
-            this.updateSvgLines();
-            this.notification.add("All field mappings cleared.", { type: "warning" });
-        }
-    }
-
-    // --- Line & Selection Management ---
-
-    selectSource(col) {
-        this.state.selectedSourceCol = col;
-        const existingIdx = this.state.mappingLines.findIndex(l => l.source_field === col);
-        if (existingIdx !== -1) {
-            this.state.selectedLineIndex = existingIdx;
-        } else {
-            this.state.selectedLineIndex = null;
-        }
-        this.updateSvgLines();
-    }
-
-    selectTarget(targetField) {
-        if (this.state.selectedSourceCol) {
-            let lineIdx = this.state.mappingLines.findIndex(l => l.source_field === this.state.selectedSourceCol);
-            if (lineIdx !== -1) {
-                this.state.mappingLines[lineIdx].target_field_id = targetField.id;
-                this.state.mappingLines[lineIdx].target_field_name = targetField.name;
-                this.state.mappingLines[lineIdx].target_field_ttype = targetField.ttype;
-            } else {
-                const newLine = {
-                    id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-                    source_field: this.state.selectedSourceCol,
-                    target_field_id: targetField.id,
-                    target_field_name: targetField.name,
-                    target_field_ttype: targetField.ttype,
-                    is_key_field: ["id", "code", "ref", "email", "vat"].includes(targetField.name),
-                    transform_type: "direct",
-                    default_value: "",
-                    lookup_strategy: "field_search",
-                    transforms: [
-                        {
-                            id: `temp_t_${Date.now()}`,
-                            sequence: 10,
-                            transform_category: "cleansing",
-                            cleansing_type: "trim",
-                            name: "Cleanse: Trim Whitespace",
-                        }
-                    ]
-                };
-                this.state.mappingLines.push(newLine);
-                lineIdx = this.state.mappingLines.length - 1;
-            }
-            this.state.selectedLineIndex = lineIdx;
-            this.updateSvgLines();
-        }
-    }
-
-    selectLine(idx) {
-        this.state.selectedLineIndex = idx;
-        const line = this.state.mappingLines[idx];
-        if (line) {
-            this.state.selectedSourceCol = line.source_field;
-        }
-        this.updateSvgLines();
-    }
-
-    deleteLine(idx) {
-        this.state.mappingLines.splice(idx, 1);
-        if (this.state.selectedLineIndex === idx) {
-            this.state.selectedLineIndex = this.state.mappingLines.length > 0 ? 0 : null;
-            if (this.state.selectedLineIndex !== null) {
-                this.state.selectedSourceCol = this.state.mappingLines[0].source_field;
-            } else {
-                this.state.selectedSourceCol = null;
-            }
-        }
-        this.updateSvgLines();
-    }
-
-    addTransformStep() {
-        const line = this.activeLine;
-        if (!line) return;
-        if (!line.transforms) line.transforms = [];
-
-        const cat = this.state.newStepCategory;
-        const newStep = {
-            id: `temp_t_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-            sequence: (line.transforms.length + 1) * 10,
-            transform_category: cat,
+    addNewTransformation() {
+        const src = this.state.selectedSourceCol || (this.state.rawColumns[0] || "col1");
+        this.state.transformations.push({
+            sequence: (this.state.transformations.length + 1) * 10,
+            source_field: src,
+            output_field: src,
+            transform_category: "cleansing",
             cleansing_type: "trim",
             pad_char: "0",
             pad_count: 10,
@@ -389,241 +182,307 @@ export class VisualMapperWidget extends Component {
             regex_replace: "",
             input_date_format: "%Y-%m-%d",
             output_date_format: "%Y-%m-%d",
-            tz_offset_hours: 0.0,
             unit_type: "mass",
             source_unit: "kg",
             target_unit: "lb",
             custom_scale_ratio: 1.0,
             target_type: "string",
-            value_mapping_json: '{"source_val": "target_val"}',
-            python_code: 'value.strip().title() if value else default',
-            default_fallback: "",
             math_op: "add",
             math_operand: 0.0,
-            math_round_precision: 2,
-            slice_mode: "slice",
-            slice_start: 0,
-            slice_end: 10,
-            slice_length: 5,
-            split_delimiter: ",",
-            split_index: 0,
-            case_when_json: "[]",
-            ai_prompt_template: "Extract and normalize from: {value}",
-            name: this.getCategoryLabel(cat),
-        };
-        line.transforms.push(newStep);
+            default_fallback: "",
+            ai_prompt_template: "",
+            python_code: "",
+        });
+        this.updateDerivedVariables();
     }
 
-    removeTransformStep(stepIdx) {
-        const line = this.activeLine;
-        if (line && line.transforms) {
-            line.transforms.splice(stepIdx, 1);
-        }
+    addTransformForColumn(col) {
+        this.state.selectedSourceCol = col;
+        this.state.transformations.push({
+            sequence: (this.state.transformations.length + 1) * 10,
+            source_field: col,
+            output_field: col,
+            transform_category: "cleansing",
+            cleansing_type: "trim",
+        });
+        this.updateDerivedVariables();
+        this.notification.add(`Added cleansing transformation for '${col}'`, { type: "info" });
     }
 
-    async applySelectedPreset() {
-        const line = this.activeLine;
-        const presetId = Number(this.state.selectedPresetId);
-        if (!line || !presetId) return;
+    removeTransform(index) {
+        this.state.transformations.splice(index, 1);
+        this.updateDerivedVariables();
+    }
+
+    moveTransform(index, direction) {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= this.state.transformations.length) return;
+        const item = this.state.transformations.splice(index, 1)[0];
+        this.state.transformations.splice(newIndex, 0, item);
+    }
+
+    async applyTransformPreset() {
+        const presetId = this.state.selectedPresetId;
+        if (!presetId) return;
 
         try {
-            if (typeof line.id === "number") {
-                await this.orm.call("migration.mapping.line", "action_apply_preset", [line.id, presetId]);
-                this.notification.add("Preset applied to field mapping successfully!", { type: "success" });
-                await this.loadData();
-            } else {
-                this.notification.add("Please save visual mappings first before applying backend presets.", { type: "warning" });
+            const preset = await this.orm.read("migration.transform.template", [parseInt(presetId)], ["name", "category", "step_ids"]);
+            if (!preset || !preset[0]) return;
+            const steps = await this.orm.read("migration.transform.template.step", preset[0].step_ids, [
+                "sequence", "transform_category", "cleansing_type", "regex_pattern", "regex_replace", "unit_type", "source_unit", "target_unit"
+            ]);
+
+            const src = this.state.selectedSourceCol || (this.state.rawColumns[0] || "col1");
+            for (const s of steps) {
+                this.state.transformations.push({
+                    sequence: (this.state.transformations.length + 1) * 10,
+                    source_field: src,
+                    output_field: src,
+                    transform_category: s.transform_category || "cleansing",
+                    cleansing_type: s.cleansing_type || "trim",
+                    regex_pattern: s.regex_pattern || "",
+                    regex_replace: s.regex_replace || "",
+                    unit_type: s.unit_type || "mass",
+                    source_unit: s.source_unit || "kg",
+                    target_unit: s.target_unit || "lb",
+                });
             }
+            this.updateDerivedVariables();
+            this.notification.add(`Applied preset '${preset[0].name}' (${steps.length} steps).`, { type: "success" });
+            this.state.selectedPresetId = "";
         } catch (err) {
             console.error("Failed to apply preset:", err);
-            this.notification.add(`Apply preset failed: ${err.message || err}`, { type: "danger" });
+            this.notification.add(`Preset error: ${err.message || err}`, { type: "danger" });
         }
     }
 
-    async saveAsPreset() {
-        const line = this.activeLine;
-        if (!line || !line.transforms || line.transforms.length === 0) {
-            this.notification.add("Active line has no transformation steps to save as preset.", { type: "warning" });
-            return;
-        }
-
-        const presetName = prompt("Enter a name for this Transformation Preset Template:", `${line.source_field} -> ${line.target_field_name} Preset`);
-        if (!presetName) return;
-
-        try {
-            if (typeof line.id === "number") {
-                await this.orm.call("migration.mapping.line", "action_save_as_preset", [line.id, presetName]);
-                this.notification.add(`Preset '${presetName}' saved successfully!`, { type: "success" });
-                await this.loadData();
-            } else {
-                this.notification.add("Please save visual mappings first before exporting as preset template.", { type: "warning" });
-            }
-        } catch (err) {
-            console.error("Failed to save preset:", err);
-            this.notification.add(`Save preset failed: ${err.message || err}`, { type: "danger" });
-        }
-    }
-
-    getCategoryLabel(cat) {
-        const map = {
-            cleansing: "Data Cleansing",
-            date_format: "Date & Time Formatting",
-            unit_conversion: "Unit Conversion",
-            type_conversion: "Data Type Conversion",
-            value_map: "Value Mapping Table",
-            math_expr: "Math & Arithmetic",
-            string_slice: "String Substring / Split",
-            slugify: "URL / Code Slugify",
-            case_when: "Case-When Branching",
-            ai_prompt: "AI Prompt Transformer",
-            python_expr: "Python Expression",
-        };
-        return map[cat] || cat;
-    }
-
-    async testLiveSample() {
-        const line = this.activeLine;
-        if (!line) return;
+    testSampleTransform() {
         this.state.isTestingSample = true;
-        this.state.sampleResult = null;
-
         try {
-            if (typeof line.id === "number") {
-                const res = await this.orm.call("migration.mapping.line", "action_test_pipeline", [line.id, this.state.sampleInput]);
-                this.state.sampleResult = res;
-            } else {
-                let currentVal = this.state.sampleInput;
-                const traces = [];
-                (line.transforms || []).forEach((t, idx) => {
-                    const prev = currentVal;
-                    if (t.transform_category === "cleansing") {
-                        if (t.cleansing_type === "trim") currentVal = String(currentVal).trim();
-                        else if (t.cleansing_type === "upper") currentVal = String(currentVal).toUpperCase();
-                        else if (t.cleansing_type === "lower") currentVal = String(currentVal).toLowerCase();
-                        else if (t.cleansing_type === "capitalize") currentVal = String(currentVal).charAt(0).toUpperCase() + String(currentVal).slice(1);
-                    } else if (t.transform_category === "math_expr") {
-                        const num = parseFloat(currentVal) || 0;
-                        if (t.math_op === "add") currentVal = num + (t.math_operand || 0);
-                        else if (t.math_op === "multiply") currentVal = num * (t.math_operand || 1);
-                        else if (t.math_op === "round") currentVal = Number(num.toFixed(t.math_round_precision || 2));
-                    } else if (t.transform_category === "slugify") {
-                        currentVal = String(currentVal).trim().toLowerCase().replace(/[^\w\s-]/g, '').replace(/[-\s]+/g, '_');
-                    }
-                    traces.push({ step: idx + 1, name: t.name || `Step ${idx + 1}`, input: prev, output: currentVal, status: "ok" });
-                });
-                this.state.sampleResult = { input: this.state.sampleInput, final_output: currentVal, traces };
+            let val = this.state.sampleInput;
+            for (const t of this.state.transformations) {
+                val = this.evaluateSingleTransformClient(val, t);
             }
-        } catch (err) {
-            console.error("Live test failed:", err);
-            this.notification.add(`Test failed: ${err.message || err}`, { type: "danger" });
+            this.state.sampleResult = JSON.stringify(val);
+        } catch (e) {
+            this.state.sampleResult = `Error: ${e.message || e}`;
         } finally {
             this.state.isTestingSample = false;
         }
     }
 
-    async saveMappings() {
-        if (!this.state.templateId) return;
+    evaluateSingleTransformClient(val, t) {
+        if (t.transform_category === "cleansing") {
+            const s = String(val);
+            if (t.cleansing_type === "trim") return s.trim();
+            if (t.cleansing_type === "upper") return s.toUpperCase();
+            if (t.cleansing_type === "lower") return s.toLowerCase();
+            if (t.cleansing_type === "regex" && t.regex_pattern) {
+                return s.replace(new RegExp(t.regex_pattern, "g"), t.regex_replace || "");
+            }
+            if (t.cleansing_type === "strip_non_numeric") return s.replace(/[^\d.]/g, "");
+            return s.trim();
+        } else if (t.transform_category === "math_expr") {
+            const n = parseFloat(val) || 0;
+            const op = t.math_operand || 0;
+            if (t.math_op === "add") return n + op;
+            if (t.math_op === "subtract") return n - op;
+            if (t.math_op === "multiply") return n * op;
+            if (t.math_op === "divide" && op !== 0) return n / op;
+            return n;
+        } else if (t.transform_category === "slugify") {
+            return String(val).toLowerCase().replace(/[^\w\s-]/g, "").replace(/[-\s]+/g, "_");
+        }
+        return val;
+    }
+
+    // ------------------------------------------------------------
+    // MODE 2: TARGET FIELD MAPPER METHODS & DRAG-AND-DROP
+    // ------------------------------------------------------------
+
+    selectSource(col) {
+        this.state.selectedSourceCol = col;
+    }
+
+    onSourceDragStart(event, colName) {
+        this.state.dragSourceCol = colName;
+        event.dataTransfer.setData("text/plain", colName);
+        event.dataTransfer.effectAllowed = "link";
+    }
+
+    onDragEnd() {
+        this.state.dragSourceCol = null;
+        this.state.dragOverTargetId = null;
+    }
+
+    onTargetDragOver(event, targetId) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "link";
+        this.state.dragOverTargetId = targetId;
+    }
+
+    onTargetDragLeave(targetId) {
+        if (this.state.dragOverTargetId === targetId) {
+            this.state.dragOverTargetId = null;
+        }
+    }
+
+    onTargetDrop(event, targetField) {
+        event.preventDefault();
+        const srcCol = event.dataTransfer.getData("text/plain") || this.state.dragSourceCol;
+        this.state.dragOverTargetId = null;
+        this.state.dragSourceCol = null;
+
+        if (!srcCol || !targetField) return;
+
+        // Check if this target field already has a mapping line
+        let existing = this.state.mappings.find(m => m.target_field_id === targetField.id);
+        if (existing) {
+            existing.source_field = srcCol;
+        } else {
+            this.state.mappings.push({
+                sequence: (this.state.mappings.length + 1) * 10,
+                source_field: srcCol,
+                target_field_id: targetField.id,
+                target_field_name: targetField.name,
+                target_field_ttype: targetField.ttype,
+                default_value: "",
+                is_key_field: ["id", "code", "ref", "default_code", "email", "vat"].includes(targetField.name),
+                lookup_strategy: "field_search",
+            });
+        }
+
+        this.notification.add(`Mapped '${srcCol}' -> '${targetField.name}'`, { type: "info" });
+        setTimeout(() => this.updateSvgLines(), 50);
+    }
+
+    toggleKeyField(mapping) {
+        mapping.is_key_field = !mapping.is_key_field;
+    }
+
+    removeMapping(mapping) {
+        const idx = this.state.mappings.indexOf(mapping);
+        if (idx >= 0) {
+            this.state.mappings.splice(idx, 1);
+            setTimeout(() => this.updateSvgLines(), 50);
+        }
+    }
+
+    clearAllMappings() {
+        this.state.mappings = [];
+        setTimeout(() => this.updateSvgLines(), 50);
+    }
+
+    autoMapMatching() {
+        const vars = this.state.availableVariables;
+        const fields = this.state.targetFields;
+        let count = 0;
+
+        for (const v of vars) {
+            const vClean = v.toLowerCase().replace(/[\s-_]+/g, "");
+            const match = fields.find(f => {
+                const fClean = f.name.toLowerCase().replace(/[\s-_]+/g, "");
+                const labelClean = (f.field_description || "").toLowerCase().replace(/[\s-_]+/g, "");
+                return fClean === vClean || labelClean === vClean;
+            });
+
+            if (match && !this.state.mappings.some(m => m.target_field_id === match.id)) {
+                this.state.mappings.push({
+                    sequence: (this.state.mappings.length + 1) * 10,
+                    source_field: v,
+                    target_field_id: match.id,
+                    target_field_name: match.name,
+                    target_field_ttype: match.ttype,
+                    default_value: "",
+                    is_key_field: ["id", "code", "ref", "default_code", "email", "vat"].includes(match.name),
+                    lookup_strategy: "field_search",
+                });
+                count++;
+            }
+        }
+
+        this.notification.add(`Auto-mapped ${count} fields.`, { type: "success" });
+        setTimeout(() => this.updateSvgLines(), 50);
+    }
+
+    // ------------------------------------------------------------
+    // SVG BEZIER CURVE RENDERER
+    // ------------------------------------------------------------
+
+    onCanvasMouseMove(e) {
+        if (this.state.dragSourceCol && this.svgRef.el) {
+            const rect = this.svgRef.el.getBoundingClientRect();
+            this.state.dragMousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+    }
+
+    onListScroll() {
+        this.updateSvgLines();
+    }
+
+    updateSvgLines() {
+        if (this.state.activeMode !== "mapping" || !this.svgRef.el || !this.containerRef.el) return;
+
+        const svg = this.svgRef.el;
+        const containerRect = this.containerRef.el.getBoundingClientRect();
+
+        while (svg.firstChild) {
+            svg.removeChild(svg.firstChild);
+        }
+
+        // Draw connections for all current mapping lines
+        for (const m of this.state.mappings) {
+            const targetEl = this.containerRef.el.querySelector(`[data-target-id="${m.target_field_id}"]`);
+            if (!targetEl) continue;
+
+            const targetRect = targetEl.getBoundingClientRect();
+            const x2 = targetRect.left - containerRect.left;
+            const y2 = targetRect.top + targetRect.height / 2 - containerRect.top;
+
+            const x1 = containerRect.width * 0.35; // approx end of left panel
+            const y1 = y2; // smooth alignment
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            const dx = Math.abs(x2 - x1) * 0.5;
+            const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+
+            path.setAttribute("d", d);
+            path.setAttribute("fill", "none");
+            path.setAttribute("stroke", m.is_key_field ? "#f0ad4e" : "#0d6efd");
+            path.setAttribute("stroke-width", "2.5");
+            path.setAttribute("stroke-dasharray", m.is_key_field ? "4 2" : "none");
+            path.setAttribute("opacity", "0.85");
+
+            svg.appendChild(path);
+        }
+    }
+
+    // ------------------------------------------------------------
+    // SAVE ALL DATA (TRANSFORMATIONS + MAPPINGS)
+    // ------------------------------------------------------------
+
+    async saveAll() {
+        const id = this.resId;
+        if (!id) return;
+
         this.state.isSaving = true;
         try {
-            await this.orm.call("migration.template", "action_save_visual_mapping", [this.state.templateId, this.state.mappingLines]);
-            this.notification.add("Visual field mapping and transformation rules saved successfully!", { type: "success" });
+            await this.orm.call("migration.template", "action_save_visual_mapping_data", [
+                [id],
+                this.state.transformations,
+                this.state.mappings,
+            ]);
+            this.notification.add("Successfully saved all transformations and field mappings!", { type: "success" });
             await this.loadData();
         } catch (err) {
-            console.error("Failed to save visual mapping:", err);
-            this.notification.add(`Save failed: ${err.message || err}`, { type: "danger" });
+            console.error("Failed to save visual mapping data:", err);
+            this.notification.add(`Error saving: ${err.message || err}`, { type: "danger" });
         } finally {
             this.state.isSaving = false;
         }
     }
-
-    // --- SVG Canvas Curve Rendering ---
-
-    updateSvgLines() {
-        if (!this.svgRef.el || !this.containerRef.el) return;
-        const containerRect = this.containerRef.el.getBoundingClientRect();
-        const svgEl = this.svgRef.el;
-        svgEl.setAttribute("width", containerRect.width);
-        svgEl.setAttribute("height", containerRect.height);
-
-        while (svgEl.firstChild) {
-            svgEl.removeChild(svgEl.firstChild);
-        }
-
-        const lines = this.state.mappingLines;
-        lines.forEach((line, idx) => {
-            const sPort = this.containerRef.el.querySelector(`[data-source-port="${line.source_field}"]`);
-            const tPort = this.containerRef.el.querySelector(`[data-target-port="${line.target_field_id}"]`);
-
-            if (sPort && tPort) {
-                const sRect = sPort.getBoundingClientRect();
-                const tRect = tPort.getBoundingClientRect();
-
-                const x1 = sRect.right - containerRect.left;
-                const y1 = sRect.top + sRect.height / 2 - containerRect.top;
-                const x2 = tRect.left - containerRect.left;
-                const y2 = tRect.top + tRect.height / 2 - containerRect.top;
-
-                const dx = Math.abs(x2 - x1) * 0.5;
-                const pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-
-                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                path.setAttribute("d", pathD);
-                path.setAttribute("fill", "none");
-                
-                const isSelected = this.state.selectedLineIndex === idx;
-                path.setAttribute("stroke", isSelected ? "#00a09d" : "#7c7bad");
-                path.setAttribute("stroke-width", isSelected ? "3.5" : "2");
-                if (isSelected) {
-                    path.setAttribute("stroke-dasharray", "5,5");
-                }
-                path.setAttribute("style", "cursor: pointer; transition: stroke 0.2s, stroke-width 0.2s;");
-                path.addEventListener("click", () => this.selectLine(idx));
-
-                svgEl.appendChild(path);
-            }
-        });
-
-        // Draw live rubberband drag line if user is dragging from a source port
-        if (this.state.isDraggingLink && this.state.dragSourceCol) {
-            const sPort = this.containerRef.el.querySelector(`[data-source-port="${this.state.dragSourceCol}"]`);
-            if (sPort) {
-                const sRect = sPort.getBoundingClientRect();
-                const x1 = sRect.right - containerRect.left;
-                const y1 = sRect.top + sRect.height / 2 - containerRect.top;
-
-                const x2 = this.state.dragMousePos.x || (x1 + 100);
-                const y2 = this.state.dragMousePos.y || y1;
-
-                const dx = Math.abs(x2 - x1) * 0.5;
-                const pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-
-                const dragPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                dragPath.setAttribute("d", pathD);
-                dragPath.setAttribute("fill", "none");
-                dragPath.setAttribute("stroke", "#ff9800");
-                dragPath.setAttribute("stroke-width", "3");
-                dragPath.setAttribute("stroke-dasharray", "6,4");
-                dragPath.setAttribute("class", "o_rubberband_path");
-                svgEl.appendChild(dragPath);
-            }
-        }
-    }
-
-    isSourceMapped(col) {
-        return this.state.mappingLines.some(l => l.source_field === col);
-    }
-
-    isTargetMapped(targetId) {
-        return this.state.mappingLines.some(l => l.target_field_id === targetId);
-    }
 }
-
-registry.category("fields").add("visual_mapper", {
-    component: VisualMapperWidget,
-});
 
 registry.category("view_widgets").add("visual_mapper", {
     component: VisualMapperWidget,
 });
-
-registry.category("actions").add("data_migration.visual_mapper", VisualMapperWidget);

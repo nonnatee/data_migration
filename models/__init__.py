@@ -5,6 +5,7 @@ from . import migration_connection
 from . import migration_extraction
 from . import migration_validation_rule
 from . import migration_template
+from . import migration_transformation_line
 from . import migration_mapping_line
 from . import migration_mapping_transform
 from . import migration_transform_template

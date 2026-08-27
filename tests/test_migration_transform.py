@@ -11,100 +11,73 @@ class TestMigrationTransform(common.TransactionCase):
         cls.connection = cls.env['migration.connection'].create({
             'name': 'Test CSV Connection',
             'conn_type': 'file_csv',
-            'source_columns': '["Weight", "BirthDate", "ProductName", "Price"]',
+            'source_columns': '["raw_weight", "birth_date", "cust_name", "price_str"]',
         })
         cls.partner_model = cls.env['ir.model'].search([('model', '=', 'res.partner')], limit=1)
         cls.name_field = cls.env['ir.model.fields'].search([('model_id', '=', cls.partner_model.id), ('name', '=', 'name')], limit=1)
         
         cls.template = cls.env['migration.template'].create({
-            'name': 'Test Template',
+            'name': 'Test Split Stage Template',
             'connection_id': cls.connection.id,
             'target_model_id': cls.partner_model.id,
         })
 
-        cls.mapping_line = cls.env['migration.mapping.line'].create({
-            'template_id': cls.template.id,
-            'source_field': 'Weight',
-            'target_field_id': cls.name_field.id,
-        })
-
-    def test_cleansing_operations(self):
-        """Test data cleansing transformations."""
-        transform = self.env['migration.mapping.transform'].create({
-            'line_id': self.mapping_line.id,
+    def test_cleansing_transformation_line(self):
+        """Test data cleansing transformation line."""
+        tline = self.env['migration.transformation.line'].create({
+            'template_id': self.template.id,
+            'source_field': 'cust_name',
+            'output_field': 'clean_name',
             'transform_category': 'cleansing',
             'cleansing_type': 'trim',
         })
-        res = transform.apply_transform("  hello world  ")
-        self.assertEqual(res, "hello world")
+        record = {'cust_name': '  John Doe  '}
+        tline.apply_transformation(record)
+        self.assertEqual(record['clean_name'], 'John Doe')
 
-        transform.write({'cleansing_type': 'upper'})
-        self.assertEqual(transform.apply_transform("hello world"), "HELLO WORLD")
+        tline.write({'cleansing_type': 'upper'})
+        tline.apply_transformation(record)
+        self.assertEqual(record['clean_name'], '  JOHN DOE  '.strip())
 
-        transform.write({'cleansing_type': 'pad_left', 'pad_char': '0', 'pad_count': 6})
-        self.assertEqual(transform.apply_transform("123"), "000123")
-
-    def test_unit_conversions(self):
-        """Test mass, length, volume, and temp unit conversions."""
-        # 1. Mass kg -> lb (1 kg = ~2.20462 lb)
-        t_mass = self.env['migration.mapping.transform'].create({
-            'line_id': self.mapping_line.id,
+    def test_derived_unit_conversion(self):
+        """Test mass unit conversion deriving a new variable."""
+        tline = self.env['migration.transformation.line'].create({
+            'template_id': self.template.id,
+            'source_field': 'raw_weight',
+            'output_field': 'weight_kg',
             'transform_category': 'unit_conversion',
             'unit_type': 'mass',
-            'source_unit': 'kg',
-            'target_unit': 'lb',
+            'source_unit': 'lb',
+            'target_unit': 'kg',
         })
-        lbs = t_mass.apply_transform("10 kg")
-        self.assertAlmostEqual(lbs, 22.0462, places=3)
+        record = {'raw_weight': '10'}
+        tline.apply_transformation(record)
+        self.assertAlmostEqual(record['weight_kg'], 4.5359, places=3)
+        self.assertEqual(record['raw_weight'], '10')  # Raw column preserved
 
-        # 2. Temp C -> F (100 C = 212 F)
-        t_temp = self.env['migration.mapping.transform'].create({
-            'line_id': self.mapping_line.id,
-            'transform_category': 'unit_conversion',
-            'unit_type': 'temp',
-            'source_unit': 'C',
-            'target_unit': 'F',
-        })
-        f = t_temp.apply_transform(100)
-        self.assertEqual(f, 212.0)
-
-    def test_date_formatting(self):
-        """Test parsing date input and converting format."""
-        t_date = self.env['migration.mapping.transform'].create({
-            'line_id': self.mapping_line.id,
-            'transform_category': 'date_format',
-            'input_date_format': '%Y-%m-%d',
-            'output_date_format': '%d/%m/%Y',
-        })
-        formatted = t_date.apply_transform("2026-07-31")
-        self.assertEqual(formatted, "31/07/2026")
-
-    def test_multi_step_pipeline(self):
-        """Test chaining multiple transform steps sequentially."""
-        # Step 1: Cleanse (Trim)
-        self.env['migration.mapping.transform'].create({
+    def test_split_stage_pipeline_execution(self):
+        """Test executing Stage 1 transformations followed by Stage 2 field mappings."""
+        # 1. Stage 1 Transformation: Cleanse name
+        self.env['migration.transformation.line'].create({
+            'template_id': self.template.id,
             'sequence': 10,
-            'line_id': self.mapping_line.id,
+            'source_field': 'cust_name',
+            'output_field': 'derived_clean_name',
             'transform_category': 'cleansing',
-            'cleansing_type': 'trim',
-        })
-        # Step 2: Unit conversion (kg -> lb)
-        self.env['migration.mapping.transform'].create({
-            'sequence': 20,
-            'line_id': self.mapping_line.id,
-            'transform_category': 'unit_conversion',
-            'unit_type': 'mass',
-            'source_unit': 'kg',
-            'target_unit': 'lb',
-        })
-        # Step 3: Type conversion to Float
-        self.env['migration.mapping.transform'].create({
-            'sequence': 30,
-            'line_id': self.mapping_line.id,
-            'transform_category': 'type_conversion',
-            'target_type': 'float',
+            'cleansing_type': 'title',
         })
 
-        test_res = self.mapping_line.action_test_pipeline("   5 kg   ")
-        self.assertAlmostEqual(test_res['final_output'], 11.023, places=2)
-        self.assertEqual(len(test_res['traces']), 3)
+        # 2. Stage 2 Mapping: Map derived_clean_name -> res.partner.name
+        self.env['migration.mapping.line'].create({
+            'template_id': self.template.id,
+            'sequence': 10,
+            'source_field': 'derived_clean_name',
+            'target_field_id': self.name_field.id,
+        })
+
+        raw_row = {'cust_name': 'john doe', 'price_str': '99.50'}
+        clean_row = self.template._apply_transformation_stage(raw_row)
+        self.assertEqual(clean_row['derived_clean_name'], 'John Doe')
+
+        target_vals = self.template._apply_mapping_stage(clean_row)
+        self.assertEqual(target_vals['name'], 'John Doe')

@@ -64,32 +64,33 @@
             <field name="batch_size">500</field>
         </record>
 
-        <!-- Mappings for res.partner -->
+        <!-- Stage 1 Transformations for res.partner -->
+        <record id="transform_res_partner_phone_trim" model="migration.transformation.line">
+            <field name="template_id" ref="template_preset_res_partner"/>
+            <field name="sequence">10</field>
+            <field name="source_field">phone</field>
+            <field name="output_field">phone</field>
+            <field name="transform_category">cleansing</field>
+            <field name="cleansing_type">trim</field>
+        </record>
+
+        <!-- Stage 2 Mappings for res.partner -->
         <record id="line_res_partner_name" model="migration.mapping.line">
             <field name="template_id" ref="template_preset_res_partner"/>
             <field name="source_field">name</field>
             <field name="target_field_id" search="[('model', '=', 'res.partner'), ('name', '=', 'name')]"/>
-            <field name="transform_type">direct</field>
             <field name="is_key_field" eval="True"/>
         </record>
         <record id="line_res_partner_email" model="migration.mapping.line">
             <field name="template_id" ref="template_preset_res_partner"/>
             <field name="source_field">email</field>
             <field name="target_field_id" search="[('model', '=', 'res.partner'), ('name', '=', 'email')]"/>
-            <field name="transform_type">direct</field>
             <field name="is_key_field" eval="True"/>
         </record>
         <record id="line_res_partner_phone" model="migration.mapping.line">
             <field name="template_id" ref="template_preset_res_partner"/>
             <field name="source_field">phone</field>
             <field name="target_field_id" search="[('model', '=', 'res.partner'), ('name', '=', 'phone')]"/>
-            <field name="transform_type">direct</field>
-        </record>
-        <record id="transform_res_partner_phone_trim" model="migration.mapping.transform">
-            <field name="line_id" ref="line_res_partner_phone"/>
-            <field name="sequence">10</field>
-            <field name="transform_category">cleansing</field>
-            <field name="cleansing_type">trim</field>
         </record>
 
         <!-- 3. Essential Built-in Model Template 2: Products (product.template) -->
@@ -101,31 +102,27 @@
             <field name="batch_size">500</field>
         </record>
 
-        <!-- Mappings for product.template -->
+        <!-- Stage 2 Mappings for product.template -->
         <record id="line_product_name" model="migration.mapping.line">
             <field name="template_id" ref="template_preset_product_template"/>
             <field name="source_field">name</field>
             <field name="target_field_id" search="[('model', '=', 'product.template'), ('name', '=', 'name')]"/>
-            <field name="transform_type">direct</field>
         </record>
         <record id="line_product_code" model="migration.mapping.line">
             <field name="template_id" ref="template_preset_product_template"/>
             <field name="source_field">default_code</field>
             <field name="target_field_id" search="[('model', '=', 'product.template'), ('name', '=', 'default_code')]"/>
-            <field name="transform_type">direct</field>
             <field name="is_key_field" eval="True"/>
         </record>
         <record id="line_product_price" model="migration.mapping.line">
             <field name="template_id" ref="template_preset_product_template"/>
             <field name="source_field">list_price</field>
             <field name="target_field_id" search="[('model', '=', 'product.template'), ('name', '=', 'list_price')]"/>
-            <field name="transform_type">direct</field>
         </record>
         <record id="line_product_weight" model="migration.mapping.line">
             <field name="template_id" ref="template_preset_product_template"/>
             <field name="source_field">weight</field>
             <field name="target_field_id" search="[('model', '=', 'product.template'), ('name', '=', 'weight')]"/>
-            <field name="transform_type">direct</field>
         </record>
 
     </data>
