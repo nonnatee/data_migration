@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import base64
 import json
 from odoo.tests import common
 from odoo.exceptions import UserError
@@ -22,17 +23,23 @@ class TestMigrationPlan(common.TransactionCase):
         cls.prod_name_field = cls.env['ir.model.fields'].search([('model_id', '=', cls.product_model.id), ('name', '=', 'name')], limit=1)
         cls.prod_code_field = cls.env['ir.model.fields'].search([('model_id', '=', cls.product_model.id), ('name', '=', 'default_code')], limit=1)
 
-        # 3. Connection with Mock Records
+        # 3. Connection with CSV Binary Content
+        csv_partner_data = "code,name,email\nTEST-P01,Partner Alpha,alpha@test.com\nTEST-P02,Partner Beta,beta@test.com\n"
         cls.conn_partner = cls.env['migration.connection'].create({
             'name': 'Mock Partners CSV',
             'conn_type': 'file_csv',
+            'source_type': 'upload',
+            'file_binary': base64.b64encode(csv_partner_data.encode('utf-8')),
             'source_columns': json.dumps(['code', 'name', 'email']),
             'state': 'connected',
         })
 
+        csv_prod_data = "prod_code,prod_name\nPROD-001,Product One\nPROD-002,Product Two\n"
         cls.conn_product = cls.env['migration.connection'].create({
             'name': 'Mock Products CSV',
             'conn_type': 'file_csv',
+            'source_type': 'upload',
+            'file_binary': base64.b64encode(csv_prod_data.encode('utf-8')),
             'source_columns': json.dumps(['prod_code', 'prod_name']),
             'state': 'connected',
         })
@@ -114,7 +121,6 @@ class TestMigrationPlan(common.TransactionCase):
 
     def test_02_record_map_relational_lookup(self):
         """Test resolving relational Many2one / Many2many via cross-stage migration.record.map."""
-        # 1. Manually create a partner and simulate an entry in migration.record.map
         partner = self.env['res.partner'].create({
             'name': 'Acme Corp Supplier',
             'email': 'acme@test.com',
@@ -127,16 +133,13 @@ class TestMigrationPlan(common.TransactionCase):
             'target_id': partner.id,
         })
 
-        # 2. Create a mapping line on product template with lookup_strategy='record_map'
-        # Check if product.template has a partner or relation field, or test _resolve_many2one directly
         line = self.env['migration.mapping.line'].create({
             'template_id': self.template_product.id,
             'source_field': 'vendor_code',
-            'target_field_id': self.p_name_field.id,  # Any field to test helper
+            'target_field_id': self.p_name_field.id,
             'lookup_strategy': 'record_map',
         })
 
-        # Mock relation model to res.partner
         resolved_id = line._resolve_from_record_map('SUP-001')
         self.assertEqual(resolved_id, partner.id)
 
@@ -160,13 +163,9 @@ class TestMigrationPlan(common.TransactionCase):
             'sequence': 10,
         })
 
-        # Mock _fetch_raw_records on connection
-        sample_rows = [
-            {'code': 'TEST-P01', 'name': 'Partner Alpha', 'email': 'alpha@test.com'},
-            {'code': 'TEST-P02', 'name': 'Partner Beta', 'email': 'beta@test.com'},
-        ]
+        csv_data = "code,name,email\nTEST-P01,Partner Alpha,alpha@test.com\nTEST-P02,Partner Beta,beta@test.com\n"
         self.conn_partner.write({
-            'file_content_cached': json.dumps(sample_rows),
+            'file_binary': base64.b64encode(csv_data.encode('utf-8')),
             'source_columns': json.dumps(['code', 'name', 'email']),
         })
 
@@ -205,11 +204,9 @@ class TestMigrationPlan(common.TransactionCase):
             'sequence': 10,
         })
 
-        sample_rows = [
-            {'code': 'DRYRUN-001', 'name': 'Dry Run Partner', 'email': 'dryrun@test.com'},
-        ]
+        csv_data = "code,name,email\nDRYRUN-001,Dry Run Partner,dryrun@test.com\n"
         self.conn_partner.write({
-            'file_content_cached': json.dumps(sample_rows),
+            'file_binary': base64.b64encode(csv_data.encode('utf-8')),
         })
 
         # Run with dry_run=True

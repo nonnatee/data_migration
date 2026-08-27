@@ -401,6 +401,10 @@ export class VisualMapperWidget extends Component {
             slice_start: 0,
             slice_end: 10,
             slice_length: 5,
+            split_delimiter: ",",
+            split_index: 0,
+            case_when_json: "[]",
+            ai_prompt_template: "Extract and normalize from: {value}",
             name: this.getCategoryLabel(cat),
         };
         line.transforms.push(newStep);
@@ -464,8 +468,10 @@ export class VisualMapperWidget extends Component {
             type_conversion: "Data Type Conversion",
             value_map: "Value Mapping Table",
             math_expr: "Math & Arithmetic",
-            string_slice: "String Substring / Slice",
+            string_slice: "String Substring / Split",
             slugify: "URL / Code Slugify",
+            case_when: "Case-When Branching",
+            ai_prompt: "AI Prompt Transformer",
             python_expr: "Python Expression",
         };
         return map[cat] || cat;

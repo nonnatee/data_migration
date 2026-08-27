@@ -3,22 +3,20 @@
     'name': 'Data Migration Tools Studio',
     'version': '19.0.1.0.0',
     'category': 'Tools/ETL',
-    'summary': 'Enterprise Data Migration & ETL Engine for Odoo 19 with CSV, Excel, JSON, Visual FoxPro DBF, ODBC, SQL & Odoo RPC support.',
+    'summary': 'Enterprise Data Migration & ETL Studio for Odoo 19 with SQL, Files, APIs, Cloud Storage, AI Transformation & Validation.',
     'description': """
 Data Migration Studio for Odoo 19
 =================================
-A comprehensive ETL and data synchronization module designed for seamless migration into Odoo 19.
+An Enterprise 6-Stage ETL and data synchronization platform designed for seamless migration into Odoo 19.
 
-Key Features:
+6 Key Stages:
 -------------
-* **Multi-Source Connectors**: CSV, Excel (.xlsx/.xls), JSON files, Visual FoxPro DBF (.dbf & .fpt memo files), ODBC (DSN & connection strings), PostgreSQL, MySQL, SQL Server, and Odoo XML-RPC/JSON-RPC.
-* **Visual Field Mapping**: Target model introspection, field-to-field mapping, value conversion maps, default values, and custom Python transformation snippets.
-* **Transformation Presets**: Reusable transformation pipeline library (cleansing, date format, unit conversion, math formulas, string slicing, slugifying).
-* **Pre-configured Model Templates**: Out-of-the-box migration templates for Contacts (res.partner) and Products (product.template).
-* **Relational Lookups**: Automated resolution for Many2one and Many2many fields by XML ID, key fields (e.g., ref, vat, email), search domain, or auto-creation.
-* **Upsert & Change Tracking**: Create, Update, Upsert (Update or Create), and Skip modes with persistent `ir.model.data` & checksum tracking.
-* **Savepoint Error Isolation**: Chunked batch processing with `with self.env.cr.savepoint():` per row, preventing single-record failures from aborting the entire run.
-* **Interactive OWL 3 Dashboard**: Live job statistics, failure distribution analysis, error log search, and CSV export.
+1. **Data Source Connection**: SQL databases (PostgreSQL, MySQL, SQL Server, Oracle, SQLite, ODBC, Visual FoxPro DBF), Files (Excel, CSV, TSV, JSON, XML), REST APIs, GraphQL, Cloud Storage (AWS S3, Google Cloud, Azure, SFTP), Google Sheets, and Odoo XML-RPC.
+2. **Data Extraction**: Custom SQL queries with parameter binding, incremental watermarks, REST/GraphQL pagination extractors, and schema introspection.
+3. **Data Transformation (AI Integration)**: Cleansing (deduplication, null handling, regex sanitization), Normalization (data types, date standardizer, unit conversions, phone/address formatting), Business Logic (math calculations, case-when branching, Python sandbox), and AI Prompt NLP Transformers.
+4. **Data Loading**: Upsert, Create Only, Update Only, and Skip modes with XML ID tracking, composite key matching, Many2one/Many2many resolution, and chunked savepoint transaction isolation.
+5. **Validation (AI Integration)**: Pre-load and Post-load validation rules (mandatory, regex format, range boundaries, foreign key existence, business integrity) and AI Anomaly Detection with Quality Health Scoring.
+6. **Monitoring & Logging**: Multi-stage Migration Plan orchestrator, live execution audit stream, throughput metrics, and interactive OWL 3 Console & Dashboard.
     """,
     'author': 'Nonnatee Kanjana',
     'website': 'https://odoo.ps-groups.com',
@@ -30,6 +28,7 @@ Key Features:
         'security/ir.model.access.csv',
         'data/migration_template_data.xml',
         'data/migration_plan_data.xml',
+        'views/migration_ai_config_views.xml',
         'views/migration_connection_views.xml',
         'views/migration_template_views.xml',
         'views/migration_plan_views.xml',

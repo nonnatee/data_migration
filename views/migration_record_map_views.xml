@@ -8,6 +8,7 @@
                 <field name="template_id"/>
                 <field name="source_key"/>
                 <field name="target_model"/>
+                <field name="target_display_name" string="Target Record"/>
                 <field name="target_id"/>
                 <field name="xml_id"/>
                 <field name="checksum"/>
@@ -34,6 +35,7 @@
                         <group string="Target Odoo Record">
                             <field name="target_model"/>
                             <field name="target_id"/>
+                            <field name="target_display_name"/>
                             <field name="xml_id"/>
                             <field name="last_migrated"/>
                         </group>
@@ -43,9 +45,27 @@
         </field>
     </record>
 
+    <record id="view_migration_record_map_search" model="ir.ui.view">
+        <field name="name">migration.record.map.search</field>
+        <field name="model">migration.record.map</field>
+        <field name="arch" type="xml">
+            <search string="Search Cross-Reference Maps">
+                <field name="source_key"/>
+                <field name="xml_id"/>
+                <field name="target_model"/>
+                <field name="template_id"/>
+                <group expand="0" string="Group By">
+                    <filter string="Template" name="group_by_template" context="{'group_by': 'template_id'}"/>
+                    <filter string="Target Model" name="group_by_model" context="{'group_by': 'target_model'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <record id="action_migration_record_map" model="ir.actions.act_window">
         <field name="name">Mapped Records Cross-Reference</field>
         <field name="res_model">migration.record.map</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_migration_record_map_search"/>
     </record>
 </odoo>

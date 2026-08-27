@@ -10,8 +10,13 @@
                 <field name="template_id"/>
                 <field name="target_model_name"/>
                 <field name="start_time"/>
-                <field name="duration_seconds" widget="float_time"/>
-                <field name="state" widget="badge" decoration-success="state == 'done'" decoration-warning="state == 'done_with_errors'" decoration-danger="state in ('failed', 'draft')" decoration-info="state == 'in_progress'"/>
+                <field name="duration_seconds"/>
+                <field name="records_per_sec"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'done'"
+                       decoration-warning="state == 'done_with_errors'"
+                       decoration-danger="state in ('failed', 'draft')"
+                       decoration-info="state == 'in_progress'"/>
                 <field name="total_records"/>
                 <field name="success_records"/>
                 <field name="error_records"/>
@@ -42,10 +47,11 @@
                             <field name="connection_id"/>
                             <field name="target_model_name"/>
                         </group>
-                        <group string="Timing &amp; Duration">
+                        <group string="Timing &amp; Throughput">
                             <field name="start_time"/>
                             <field name="end_time"/>
                             <field name="duration_seconds"/>
+                            <field name="records_per_sec"/>
                         </group>
                     </group>
                     <group string="Migration Progress">
@@ -56,6 +62,7 @@
                         <group>
                             <field name="success_records" class="text-success"/>
                             <field name="error_records" class="text-danger"/>
+                            <field name="skipped_records" class="text-muted"/>
                         </group>
                         <field name="progress_percent" widget="progressbar"/>
                     </group>
@@ -67,7 +74,7 @@
                     <notebook>
                         <page string="Detailed Logs" name="logs">
                             <field name="log_ids" readonly="1">
-                                <list string="Execution Logs" decoration-danger="log_type == 'error'" decoration-warning="log_type == 'warning'" decoration-info="log_type == 'info'">
+                                <list string="Execution Logs" decoration-danger="log_type == 'error'" decoration-warning="log_type == 'warning'" decoration-success="log_type == 'success'" decoration-info="log_type == 'info'">
                                     <field name="row_number"/>
                                     <field name="source_key"/>
                                     <field name="log_type" widget="badge"/>

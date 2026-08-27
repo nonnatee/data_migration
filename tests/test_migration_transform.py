@@ -10,7 +10,7 @@ class TestMigrationTransform(common.TransactionCase):
         super().setUpClass()
         cls.connection = cls.env['migration.connection'].create({
             'name': 'Test CSV Connection',
-            'conn_type': 'csv_file',
+            'conn_type': 'file_csv',
             'source_columns': '["Weight", "BirthDate", "ProductName", "Price"]',
         })
         cls.partner_model = cls.env['ir.model'].search([('model', '=', 'res.partner')], limit=1)

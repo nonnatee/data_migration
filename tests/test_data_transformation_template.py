@@ -10,7 +10,7 @@ class TestDataTransformationTemplate(common.TransactionCase):
         super().setUpClass()
         cls.connection = cls.env['migration.connection'].create({
             'name': 'Test ETL Preset Connection',
-            'connector_type': 'csv',
+            'conn_type': 'file_csv',
             'source_columns': '["name", "code", "phone", "price", "weight"]',
         })
         cls.partner_model = cls.env['ir.model'].search([('model', '=', 'res.partner')], limit=1)
@@ -111,10 +111,9 @@ class TestDataTransformationTemplate(common.TransactionCase):
         rel_line = self.env['migration.mapping.line'].create({
             'template_id': self.template.id,
             'source_field': 'parent_name',
-            'target_field_id': cls.parent_field.id if hasattr(self, 'parent_field') else self.env['ir.model.fields'].search([('model', '=', 'res.partner'), ('name', '=', 'parent_id')], limit=1).id,
+            'target_field_id': self.parent_field.id,
             'lookup_strategy': 'field_search',
         })
-        # Set lookup field to name
         name_field = self.env['ir.model.fields'].search([('model', '=', 'res.partner'), ('name', '=', 'name')], limit=1)
         rel_line.write({'lookup_field_id': name_field.id})
 

@@ -15,9 +15,10 @@ class MigrationTransformTemplate(models.Model):
         ('general', 'General Transformation'),
         ('cleansing', 'Data Cleansing & Sanitization'),
         ('formatting', 'Text & Date Formatting'),
-        ('math', 'Math & Arithmetic'),
+        ('math', 'Math & Arithmetic Calculations'),
         ('unit', 'Unit Conversion'),
         ('type', 'Type Casting'),
+        ('ai', 'AI NLP Pipeline'),
     ], string='Preset Category', default='general', required=True)
 
     active = fields.Boolean(default=True)
@@ -35,7 +36,6 @@ class MigrationTransformTemplate(models.Model):
         if not line:
             return False
 
-        # Clear existing line transforms if any
         line.transform_ids.unlink()
 
         TransformObj = self.env['migration.mapping.transform']
@@ -49,9 +49,11 @@ class MigrationTransformTemplate(models.Model):
                 'pad_count': step.pad_count,
                 'regex_pattern': step.regex_pattern,
                 'regex_replace': step.regex_replace,
+                'regex_group_index': step.regex_group_index,
                 'input_date_format': step.input_date_format,
                 'output_date_format': step.output_date_format,
                 'tz_offset_hours': step.tz_offset_hours,
+                'date_math_days': step.date_math_days,
                 'unit_type': step.unit_type,
                 'source_unit': step.source_unit,
                 'target_unit': step.target_unit,
@@ -67,6 +69,10 @@ class MigrationTransformTemplate(models.Model):
                 'slice_end': step.slice_end,
                 'slice_length': step.slice_length,
                 'slice_mode': step.slice_mode,
+                'split_delimiter': step.split_delimiter,
+                'split_index': step.split_index,
+                'case_when_json': step.case_when_json,
+                'ai_prompt_template': step.ai_prompt_template,
             })
         return True
 
@@ -93,9 +99,11 @@ class MigrationTransformTemplate(models.Model):
                 'pad_count': t.pad_count,
                 'regex_pattern': t.regex_pattern,
                 'regex_replace': t.regex_replace,
+                'regex_group_index': t.regex_group_index,
                 'input_date_format': t.input_date_format,
                 'output_date_format': t.output_date_format,
                 'tz_offset_hours': t.tz_offset_hours,
+                'date_math_days': t.date_math_days,
                 'unit_type': t.unit_type,
                 'source_unit': t.source_unit,
                 'target_unit': t.target_unit,
@@ -111,6 +119,10 @@ class MigrationTransformTemplate(models.Model):
                 'slice_end': t.slice_end,
                 'slice_length': t.slice_length,
                 'slice_mode': t.slice_mode,
+                'split_delimiter': t.split_delimiter,
+                'split_index': t.split_index,
+                'case_when_json': t.case_when_json,
+                'ai_prompt_template': t.ai_prompt_template,
             })
 
         return preset

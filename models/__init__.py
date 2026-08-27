@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
+from . import migration_ai_config
 from . import migration_connection
+from . import migration_extraction
+from . import migration_validation_rule
 from . import migration_template
 from . import migration_mapping_line
 from . import migration_mapping_transform

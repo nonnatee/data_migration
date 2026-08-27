@@ -9,7 +9,11 @@
                 <field name="name"/>
                 <field name="conn_type"/>
                 <field name="source_type"/>
-                <field name="state" widget="badge" decoration-success="state == 'connected'" decoration-danger="state == 'error'" decoration-info="state == 'draft'"/>
+                <field name="latency_ms" string="Latency (ms)"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'connected'"
+                       decoration-danger="state == 'error'"
+                       decoration-info="state == 'draft'"/>
                 <field name="file_encoding"/>
             </list>
         </field>
@@ -29,47 +33,109 @@
                     <div class="oe_title">
                         <label for="name" class="oe_edit_only"/>
                         <h1>
-                            <field name="name" placeholder="e.g. Legacy FoxPro Sales Data or Partner CSV"/>
+                            <field name="name" placeholder="e.g. Legacy SQL Sales DB or Partner CSV"/>
                         </h1>
                     </div>
                     <group>
-                        <group string="Source Specification">
+                        <group string="Source Type">
                             <field name="conn_type"/>
-                            <field name="source_type" invisible="conn_type not in ('file_csv', 'file_excel', 'file_json', 'foxpro_dbf')"/>
-                            <field name="file_binary" filename="file_name" invisible="source_type != 'upload' or conn_type not in ('file_csv', 'file_excel', 'file_json', 'foxpro_dbf')"/>
+                            <field name="latency_ms" readonly="1" invisible="not latency_ms"/>
+                        </group>
+                    </group>
+
+                    <!-- 1. File Source Options -->
+                    <group string="File Configuration" invisible="conn_type not in ('file_csv', 'file_excel', 'file_json', 'file_xml', 'foxpro_dbf')">
+                        <group>
+                            <field name="source_type"/>
+                            <field name="file_binary" filename="file_name" invisible="source_type != 'upload'"/>
                             <field name="file_name" invisible="1"/>
-                            <field name="file_path" invisible="source_type != 'path' and conn_type not in ('foxpro_dbf')" placeholder="/var/data/migration/customers.dbf"/>
-                            <field name="file_encoding" invisible="conn_type not in ('file_csv', 'file_json', 'foxpro_dbf')"/>
-                        </group>                        <group string="Format Options" invisible="conn_type not in ('file_csv', 'foxpro_dbf')">
+                            <field name="file_path" invisible="source_type != 'path'" placeholder="/var/data/migration/customers.csv"/>
+                            <field name="file_url" invisible="source_type != 'url'" placeholder="https://example.com/exports/data.csv"/>
+                            <field name="file_encoding"/>
+                        </group>
+                        <group string="File Format Options">
                             <field name="csv_delimiter" invisible="conn_type != 'file_csv'"/>
                             <field name="csv_quotechar" invisible="conn_type != 'file_csv'"/>
+                            <field name="csv_has_header" invisible="conn_type != 'file_csv'"/>
+                            <field name="excel_sheet_name" invisible="conn_type != 'file_excel'"/>
+                            <field name="json_data_path" invisible="conn_type != 'file_json'"/>
+                            <field name="xml_root_xpath" invisible="conn_type != 'file_xml'"/>
                             <field name="dbf_table_name" invisible="conn_type != 'foxpro_dbf'"/>
                             <field name="dbf_memo_path" invisible="conn_type != 'foxpro_dbf'"/>
                         </group>
                     </group>
 
-                    <!-- ODBC Details -->
+                    <!-- 2. ODBC Settings -->
                     <group string="ODBC Driver Settings" invisible="conn_type != 'odbc'">
                         <field name="odbc_connection_string" placeholder="Driver={Visual FoxPro Driver};SourceDB=C:\VFP\Data;SourceType=DBF;"/>
                         <field name="db_query" placeholder="SELECT * FROM customer_table"/>
                     </group>
 
-                    <!-- SQL Database Settings -->
-                    <group string="Database Configuration" invisible="conn_type != 'database_sql'">
+                    <!-- 3. SQL Database Settings -->
+                    <group string="SQL Database Configuration" invisible="conn_type != 'database_sql'">
                         <group>
                             <field name="db_type"/>
-                            <field name="db_host"/>
-                            <field name="db_port"/>
+                            <field name="db_host" invisible="db_type == 'sqlite'"/>
+                            <field name="db_port" invisible="db_type == 'sqlite'"/>
+                            <field name="db_ssl_mode" invisible="db_type != 'postgresql'"/>
                         </group>
                         <group>
                             <field name="db_name"/>
-                            <field name="db_user"/>
-                            <field name="db_password" password="True"/>
+                            <field name="db_user" invisible="db_type == 'sqlite'"/>
+                            <field name="db_password" password="True" invisible="db_type == 'sqlite'"/>
                         </group>
-                        <field name="db_query" placeholder="SELECT * FROM legacy_users"/>
+                        <field name="db_query" placeholder="SELECT * FROM legacy_users WHERE active = 1"/>
                     </group>
 
-                    <!-- Odoo RPC Settings -->
+                    <!-- 4. REST API & GraphQL Settings -->
+                    <group string="REST API Configuration" invisible="conn_type not in ('api_rest', 'api_graphql')">
+                        <group>
+                            <field name="api_url"/>
+                            <field name="api_http_method" invisible="conn_type == 'api_graphql'"/>
+                            <field name="api_auth_type"/>
+                            <field name="api_token" password="True" invisible="api_auth_type not in ('bearer', 'api_key')"/>
+                            <field name="api_key_header" invisible="api_auth_type != 'api_key'"/>
+                            <field name="api_user" invisible="api_auth_type not in ('basic', 'oauth2')"/>
+                            <field name="api_password" password="True" invisible="api_auth_type not in ('basic', 'oauth2')"/>
+                        </group>
+                        <group string="Pagination &amp; Payload">
+                            <field name="api_pagination_type" invisible="conn_type == 'api_graphql'"/>
+                            <field name="api_page_size" invisible="api_pagination_type in ('none', False)"/>
+                            <field name="api_max_pages" invisible="api_pagination_type in ('none', False)"/>
+                            <field name="json_data_path" placeholder="data.items or results"/>
+                        </group>
+                        <field name="api_headers_json" widget="ace" options="{'mode': 'json'}"/>
+                        <field name="api_params_json" widget="ace" options="{'mode': 'json'}" invisible="conn_type == 'api_graphql'"/>
+                        <field name="api_request_body" widget="ace" options="{'mode': 'json'}" placeholder="GraphQL query or POST JSON body"/>
+                    </group>
+
+                    <!-- 5. Cloud Storage Settings -->
+                    <group string="Cloud Storage Configuration" invisible="conn_type != 'cloud_storage'">
+                        <group>
+                            <field name="cloud_provider"/>
+                            <field name="cloud_bucket" invisible="cloud_provider == 'sftp'"/>
+                            <field name="cloud_object_key"/>
+                            <field name="cloud_region" invisible="cloud_provider != 's3'"/>
+                            <field name="cloud_endpoint_url" invisible="cloud_provider != 's3'"/>
+                        </group>
+                        <group>
+                            <field name="cloud_access_key" invisible="cloud_provider == 'sftp'"/>
+                            <field name="cloud_secret_key" password="True" invisible="cloud_provider == 'sftp'"/>
+                            <!-- SFTP Fields -->
+                            <field name="sftp_host" invisible="cloud_provider != 'sftp'"/>
+                            <field name="sftp_port" invisible="cloud_provider != 'sftp'"/>
+                            <field name="sftp_user" invisible="cloud_provider != 'sftp'"/>
+                            <field name="sftp_password" password="True" invisible="cloud_provider != 'sftp'"/>
+                        </group>
+                    </group>
+
+                    <!-- 6. Google Sheets Settings -->
+                    <group string="Google Sheets Configuration" invisible="conn_type != 'google_sheets'">
+                        <field name="sheets_url"/>
+                        <field name="sheets_gid"/>
+                    </group>
+
+                    <!-- 7. Odoo RPC Settings -->
                     <group string="Remote Odoo RPC Instance" invisible="conn_type != 'odoo_rpc'">
                         <group>
                             <field name="rpc_url"/>
@@ -89,6 +155,7 @@
                         <page string="Schema &amp; Sample Data" name="schema">
                             <group>
                                 <field name="source_columns" widget="ace" options="{'mode': 'json'}" readonly="1"/>
+                                <field name="source_schema_info" widget="ace" options="{'mode': 'json'}" readonly="1"/>
                                 <field name="preview_data" widget="ace" options="{'mode': 'json'}" readonly="1"/>
                             </group>
                         </page>
@@ -111,7 +178,7 @@
                 Create your first Data Connection!
             </p>
             <p>
-                Connect to CSV, Excel, JSON, Visual FoxPro DBF files, ODBC drivers, or SQL databases.
+                Connect to CSV, Excel, JSON, XML, FoxPro DBF, SQL Databases (PostgreSQL/MySQL/MSSQL/SQLite), REST APIs, GraphQL, AWS S3, or Google Sheets.
             </p>
         </field>
     </record>

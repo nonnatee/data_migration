@@ -71,11 +71,8 @@ class MigrationPlanStep(models.Model):
         })
 
         # Execute Job
-        if limit and limit > 0:
-            # Execute with limit
-            job._execute_job_with_limit(limit=limit)
-        else:
-            job._execute_job()
+        effective_limit = limit or self.sample_limit or 0
+        job._execute_job(limit=effective_limit, stage_name=self.stage_id.name, step_name=self.name)
 
         # Update step metrics
         self.write({

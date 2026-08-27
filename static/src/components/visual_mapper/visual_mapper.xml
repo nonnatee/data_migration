@@ -92,7 +92,7 @@
                                  t-on-dragstart="(e) => this.onSourceDragStart(e, col)"
                                  t-on-dragend="() => this.onDragEnd()"
                                  t-on-click="() => this.selectSource(col)">
-                                <div class="d-flex align-items-center text-truncate me-2">
+                                 <div class="d-flex align-items-center text-truncate me-2">
                                     <i class="fa fa-arrows-alt me-2 text-muted drag-handle cursor-move" title="Drag to target field"/>
                                     <i class="fa fa-file-code-o me-2 opacity-75"/>
                                     <span class="fw-semibold text-truncate" t-out="col"/>
@@ -248,6 +248,8 @@
                                                         <option value="regex">Regex Search &amp; Replace</option>
                                                         <option value="strip_html">Strip HTML Tags</option>
                                                         <option value="strip_non_numeric">Strip Non-Numeric</option>
+                                                        <option value="handle_null">Null Default Fallback</option>
+                                                        <option value="drop_if_null">Drop / Skip if Null</option>
                                                     </select>
                                                 </div>
                                                 <t t-if="step.cleansing_type == 'pad_left' || step.cleansing_type == 'pad_right'">
@@ -296,7 +298,7 @@
                                                         <option value="mass">Mass / Weight (kg, lb, oz)</option>
                                                         <option value="length">Length / Distance (m, km, ft)</option>
                                                         <option value="volume">Volume (l, ml, gal)</option>
-                                                        <option value="temp">Temperature (C, F, K)</option>
+                                                        <option value="temp">Temperature (°C, °F, K)</option>
                                                         <option value="custom">Custom Scale Multiplier</option>
                                                     </select>
                                                 </div>
@@ -348,6 +350,9 @@
                                                     <option value="float">Float / Decimal</option>
                                                     <option value="boolean">Boolean</option>
                                                     <option value="date">Date</option>
+                                                    <option value="datetime">Datetime</option>
+                                                    <option value="json_parse">JSON Parse</option>
+                                                    <option value="base64_encode">Base64 Encode</option>
                                                 </select>
                                             </t>
 
@@ -362,6 +367,7 @@
                                                             <option value="divide">Divide (/)</option>
                                                             <option value="round">Round</option>
                                                             <option value="abs">Absolute Value</option>
+                                                            <option value="percentage">Percentage (%)</option>
                                                         </select>
                                                     </div>
                                                     <div class="col-6">
@@ -379,6 +385,7 @@
                                                         <option value="slice">Start to End Index</option>
                                                         <option value="left">First N Chars (Left)</option>
                                                         <option value="right">Last N Chars (Right)</option>
+                                                        <option value="split">Split by Delimiter</option>
                                                     </select>
                                                 </div>
                                                 <div t-if="step.slice_mode == 'slice'" class="row g-2">
@@ -391,9 +398,22 @@
                                                         <input type="number" class="form-control form-control-sm" t-model="step.slice_end"/>
                                                     </div>
                                                 </div>
-                                                <div t-if="step.slice_mode != 'slice'" class="mb-1">
-                                                    <label class="form-label mb-1">Char Count</label>
-                                                    <input type="number" class="form-control form-control-sm" t-model="step.slice_length"/>
+                                                <div t-if="step.slice_mode == 'split'" class="row g-2">
+                                                    <div class="col-6">
+                                                        <label class="form-label mb-1">Delimiter</label>
+                                                        <input type="text" class="form-control form-control-sm" t-model="step.split_delimiter"/>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <label class="form-label mb-1">Token Index</label>
+                                                        <input type="number" class="form-control form-control-sm" t-model="step.split_index"/>
+                                                    </div>
+                                                </div>
+                                            </t>
+
+                                            <t t-if="step.transform_category == 'ai_prompt'">
+                                                <div class="mb-1">
+                                                    <label class="form-label mb-1 text-primary"><i class="fa fa-bolt me-1"/>AI Natural Language Instruction</label>
+                                                    <textarea class="form-control form-control-sm" rows="2" t-model="step.ai_prompt_template" placeholder="e.g. Extract the province from this address string: {value}"></textarea>
                                                 </div>
                                             </t>
 
@@ -418,6 +438,7 @@
                                     <option value="math_expr">Math &amp; Arithmetic</option>
                                     <option value="string_slice">String Substring / Slice</option>
                                     <option value="slugify">URL / Code Slugify</option>
+                                    <option value="ai_prompt">AI Prompt Transformer</option>
                                     <option value="python_expr">Python Expression</option>
                                 </select>
                                 <button class="btn btn-outline-primary" t-on-click="addTransformStep">

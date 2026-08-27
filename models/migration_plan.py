@@ -245,7 +245,6 @@ class MigrationPlan(models.Model):
 
                     except UserError as ue:
                         if str(ue) == "__DRY_RUN_SIMULATION_ROLLBACK__":
-                            # Expected rollback for dry run
                             _logger.info("Dry run simulation completed for step %s. Database state rolled back.", step.name)
                         else:
                             stage_error_count += 1

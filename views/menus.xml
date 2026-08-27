@@ -15,7 +15,7 @@
 
     <!-- ETL Configuration Menu Category -->
     <menuitem id="menu_migration_studio_config"
-              name="ETL Setup"
+              name="ETL Pipeline Setup"
               parent="menu_migration_studio_root"
               sequence="10"/>
 
@@ -43,6 +43,12 @@
               action="action_migration_transform_template"
               sequence="30"/>
 
+    <menuitem id="menu_migration_ai_config"
+              name="AI Assistant Settings"
+              parent="menu_migration_studio_config"
+              action="action_migration_ai_config"
+              sequence="40"/>
+
     <!-- Execution & History Category -->
     <menuitem id="menu_migration_studio_execution"
               name="Executions &amp; Audit"
@@ -50,7 +56,7 @@
               sequence="20"/>
 
     <menuitem id="menu_migration_plan_runs"
-              name="Plan Runs"
+              name="Plan Execution Runs"
               parent="menu_migration_studio_execution"
               action="action_migration_plan_run"
               sequence="5"/>

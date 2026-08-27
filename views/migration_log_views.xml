@@ -4,14 +4,24 @@
         <field name="name">migration.log.list</field>
         <field name="model">migration.log</field>
         <field name="arch" type="xml">
-            <list string="Migration Logs" decoration-danger="log_type == 'error'" decoration-warning="log_type == 'warning'">
+            <list string="Migration Audit Logs"
+                  decoration-danger="log_type == 'error'"
+                  decoration-warning="log_type == 'warning'"
+                  decoration-success="log_type == 'success'">
+                <field name="create_date" string="Timestamp"/>
                 <field name="job_id"/>
                 <field name="template_id"/>
+                <field name="stage_name" optional="show"/>
+                <field name="step_name" optional="show"/>
                 <field name="row_number"/>
                 <field name="source_key"/>
-                <field name="log_type" widget="badge"/>
+                <field name="log_type" widget="badge"
+                       decoration-danger="log_type == 'error'"
+                       decoration-warning="log_type == 'warning'"
+                       decoration-success="log_type == 'success'"
+                       decoration-info="log_type == 'info'"/>
                 <field name="message"/>
-                <field name="target_record_id"/>
+                <field name="target_record_id" optional="show"/>
             </list>
         </field>
     </record>
@@ -20,31 +30,71 @@
         <field name="name">migration.log.form</field>
         <field name="model">migration.log</field>
         <field name="arch" type="xml">
-            <form string="Log Entry Detail">
+            <form string="Audit Log Entry Detail">
+                <header>
+                    <button name="action_ask_ai_for_resolution"
+                            type="object"
+                            string="Ask AI for Fix Suggestion"
+                            class="btn-outline-primary"
+                            icon="fa-lightbulb-o"
+                            invisible="log_type != 'error'"/>
+                </header>
                 <sheet>
                     <group>
-                        <group>
+                        <group string="Execution Context">
                             <field name="job_id"/>
                             <field name="template_id"/>
+                            <field name="stage_name"/>
+                            <field name="step_name"/>
                             <field name="log_type"/>
                         </group>
-                        <group>
+                        <group string="Record Identification">
                             <field name="row_number"/>
                             <field name="source_key"/>
                             <field name="target_record_id"/>
+                            <field name="create_date" readonly="1"/>
                         </group>
                     </group>
+
                     <group string="Message">
                         <field name="message" readonly="1"/>
                     </group>
+
+                    <group string="AI Resolution Suggestion" invisible="not ai_resolution_suggestion">
+                        <field name="ai_resolution_suggestion" readonly="1" class="alert alert-info"/>
+                    </group>
+
                     <group string="Error Traceback" invisible="not error_traceback">
                         <field name="error_traceback" widget="ace" readonly="1"/>
                     </group>
-                    <group string="Raw Source Data" invisible="not raw_data">
-                        <field name="raw_data" widget="ace" options="{'mode': 'json'}" readonly="1"/>
+
+                    <group string="Data Payloads">
+                        <field name="raw_data" widget="ace" options="{'mode': 'json'}" readonly="1" invisible="not raw_data"/>
+                        <field name="transformed_data" widget="ace" options="{'mode': 'json'}" readonly="1" invisible="not transformed_data"/>
                     </group>
                 </sheet>
             </form>
+        </field>
+    </record>
+
+    <record id="view_migration_log_search" model="ir.ui.view">
+        <field name="name">migration.log.search</field>
+        <field name="model">migration.log</field>
+        <field name="arch" type="xml">
+            <search string="Search Logs">
+                <field name="source_key"/>
+                <field name="message"/>
+                <field name="job_id"/>
+                <field name="template_id"/>
+                <filter string="Errors Only" name="errors" domain="[('log_type', '=', 'error')]"/>
+                <filter string="Warnings" name="warnings" domain="[('log_type', '=', 'warning')]"/>
+                <filter string="Success" name="success" domain="[('log_type', '=', 'success')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Log Type" name="group_by_type" context="{'group_by': 'log_type'}"/>
+                    <filter string="Job" name="group_by_job" context="{'group_by': 'job_id'}"/>
+                    <filter string="Template" name="group_by_template" context="{'group_by': 'template_id'}"/>
+                </group>
+            </search>
         </field>
     </record>
 
@@ -52,5 +102,6 @@
         <field name="name">Migration Audit Logs</field>
         <field name="res_model">migration.log</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_migration_log_search"/>
     </record>
 </odoo>

@@ -11,7 +11,9 @@
                 <field name="target_model_id"/>
                 <field name="operation_mode"/>
                 <field name="batch_size"/>
-                <field name="record_map_count"/>
+                <field name="validation_rule_count" string="Validation Rules"/>
+                <field name="record_map_count" string="Mapped Records"/>
+                <field name="quality_score" widget="progressbar" string="Quality Health"/>
             </list>
         </field>
     </record>
@@ -24,10 +26,21 @@
             <form string="Mapping Template">
                 <header>
                     <button name="action_open_run_wizard" type="object" string="Run Migration Job" class="btn-primary" icon="fa-play"/>
-                    <button name="action_auto_map_fields" type="object" string="Auto-Map Matching Fields" class="btn-secondary" icon="fa-magic"/>
-                    <button name="action_view_record_mappings" type="object" string="View Mapped Records" class="btn-info" icon="fa-database"/>
+                    <button name="action_auto_map_fields" type="object" string="Auto-Map Fields" class="btn-secondary" icon="fa-magic"/>
+                    <button name="action_ai_auto_map_fields" type="object" string="AI Auto-Map" class="btn-outline-primary" icon="fa-bolt"/>
+                    <button name="action_ai_suggest_validation_rules" type="object" string="AI Suggest Rules" class="btn-outline-info" icon="fa-check-circle"/>
+                    <button name="action_audit_data_quality" type="object" string="Audit Data Quality" class="btn-outline-secondary" icon="fa-stethoscope"/>
                 </header>
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_record_mappings"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-link">
+                            <field name="record_map_count" widget="statinfo" string="Mapped Records"/>
+                        </button>
+                    </div>
+
                     <div class="oe_title">
                         <label for="name" class="oe_edit_only"/>
                         <h1>
@@ -37,12 +50,15 @@
                     <group>
                         <group string="Source &amp; Target Setup">
                             <field name="connection_id"/>
+                            <field name="extraction_id" domain="[('connection_id', '=', connection_id)]"/>
                             <field name="target_model_id" options="{'no_create': True}"/>
                             <field name="target_model_name" invisible="1"/>
                         </group>
                         <group string="Execution Parameters">
                             <field name="operation_mode"/>
                             <field name="batch_size"/>
+                            <field name="bypass_tracking" widget="boolean_toggle"/>
+                            <field name="bypass_subscription" widget="boolean_toggle"/>
                             <field name="active" widget="boolean_toggle"/>
                         </group>
                     </group>
@@ -51,6 +67,7 @@
                         <page string="Visual Diagram Mapper" name="visual_diagram">
                             <widget name="visual_mapper"/>
                         </page>
+
                         <page string="Field Mapping Rules" name="mappings">
                             <field name="mapping_line_ids">
                                 <list editable="bottom" decoration-info="is_key_field == True">
@@ -101,12 +118,65 @@
                                 </form>
                             </field>
                         </page>
+
+                        <page string="Validation Rules" name="validation_rules">
+                            <field name="validation_rule_ids">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="rule_timing"/>
+                                    <field name="source_field"/>
+                                    <field name="rule_type"/>
+                                    <field name="action_on_failure" widget="badge"
+                                           decoration-danger="action_on_failure in ('reject_record', 'abort_stage')"
+                                           decoration-warning="action_on_failure == 'warning'"/>
+                                    <field name="error_message"/>
+                                    <field name="active" widget="boolean_toggle"/>
+                                </list>
+                                <form string="Validation Rule Detail">
+                                    <group>
+                                        <group string="Rule Identification">
+                                            <field name="name"/>
+                                            <field name="rule_timing"/>
+                                            <field name="source_field"/>
+                                            <field name="target_field_id"/>
+                                            <field name="active"/>
+                                        </group>
+                                        <group string="Rule Specification">
+                                            <field name="rule_type"/>
+                                            <field name="action_on_failure"/>
+                                            <field name="error_message"/>
+                                        </group>
+                                    </group>
+                                    <group string="Constraint Parameters">
+                                        <field name="regex_pattern" invisible="rule_type != 'regex'"/>
+                                        <field name="allowed_values" invisible="rule_type != 'value_in_set'"/>
+                                        <field name="min_value" invisible="rule_type != 'numeric_range'"/>
+                                        <field name="max_value" invisible="rule_type != 'numeric_range'"/>
+                                        <field name="fk_model" invisible="rule_type != 'foreign_key'"/>
+                                        <field name="fk_field" invisible="rule_type != 'foreign_key'"/>
+                                        <field name="python_code" invisible="rule_type not in ('custom_python', 'business_integrity')" widget="ace" options="{'mode': 'python'}"/>
+                                    </group>
+                                </form>
+                            </field>
+                        </page>
+
+                        <page string="Quality &amp; Audit Report" name="quality_report">
+                            <group>
+                                <field name="quality_score" widget="progressbar"/>
+                            </group>
+                            <field name="quality_report" readonly="1" placeholder="Run Data Quality Audit to inspect completeness and duplicates..."/>
+                        </page>
+
                         <page string="Execution History" name="history">
                             <field name="job_ids" readonly="1">
                                 <list string="Jobs">
                                     <field name="name"/>
                                     <field name="start_time"/>
-                                    <field name="state" widget="badge" decoration-success="state == 'done'" decoration-warning="state == 'done_with_errors'" decoration-danger="state == 'failed'"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'done'"
+                                           decoration-warning="state == 'done_with_errors'"
+                                           decoration-danger="state == 'failed'"/>
                                     <field name="total_records"/>
                                     <field name="success_records"/>
                                     <field name="error_records"/>
@@ -125,5 +195,39 @@
         <field name="name">Mapping Templates</field>
         <field name="res_model">migration.template</field>
         <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first Data Migration Template!
+            </p>
+            <p>
+                Map source columns to Odoo target fields, configure multi-step transformation pipelines, and define data validation rules.
+            </p>
+        </field>
+    </record>
+
+    <!-- Quick Run Wizard Form View -->
+    <record id="view_migration_run_wizard_form" model="ir.ui.view">
+        <field name="name">migration.run.wizard.form</field>
+        <field name="model">migration.run.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Execute Migration Job">
+                <sheet>
+                    <group>
+                        <group string="Template &amp; Connection">
+                            <field name="template_id" readonly="1"/>
+                            <field name="connection_id" readonly="1"/>
+                        </group>
+                        <group string="Source Override (Optional)">
+                            <field name="override_file" filename="file_name"/>
+                            <field name="file_name" invisible="1"/>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_start_migration" type="object" string="Start Migration" class="btn-primary" icon="fa-play"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
     </record>
 </odoo>

@@ -50,7 +50,7 @@ class MigrationMappingLine(models.Model):
     python_code = fields.Text(
         string='Python Expression',
         default='value.strip().title() if value else default',
-        help='Available variables: value, record (dict), env, default'
+        help='Available variables: value, record (dict), env, default, re, datetime, math'
     )
 
     transform_ids = fields.One2many(
@@ -91,7 +91,7 @@ class MigrationMappingLine(models.Model):
             for step in self.transform_ids.sorted('sequence'):
                 val = step.apply_transform(val, record_ctx=source_record)
         else:
-            # Legacy single-step fallback
+            # Fallback legacy direct conversion
             if self.transform_type == 'default':
                 val = self.default_value
             elif self.transform_type == 'value_map' and self.value_mapping_json:
@@ -101,11 +101,18 @@ class MigrationMappingLine(models.Model):
                 except Exception as e:
                     _logger.warning("Failed to parse value_mapping_json on line ID %s: %s", self.id, e)
             elif self.transform_type == 'python_expr' and self.python_code:
+                import datetime
+                import math
+                import re
                 eval_ctx = {
                     'value': raw_value,
                     'record': source_record,
                     'env': self.env,
                     'default': self.default_value,
+                    're': re,
+                    'datetime': datetime,
+                    'math': math,
+                    'json': json,
                 }
                 try:
                     val = eval(self.python_code, eval_ctx)
@@ -129,15 +136,15 @@ class MigrationMappingLine(models.Model):
         elif ttype == 'boolean':
             if isinstance(val, bool):
                 return val
-            return str(val).lower() in ('true', '1', 'yes', 't', 'y', 'on')
+            return str(val).lower() in ('true', '1', 'yes', 't', 'y', 'on', 'active')
         elif ttype in ('integer', 'monetary'):
             try:
-                return int(float(val))
+                return int(float(str(val).strip()))
             except (ValueError, TypeError):
                 return 0
         elif ttype == 'float':
             try:
-                return float(val)
+                return float(str(val).strip())
             except (ValueError, TypeError):
                 return 0.0
 
@@ -210,7 +217,6 @@ class MigrationMappingLine(models.Model):
             ('source_key', '=', key),
         ], order='id desc', limit=1)
         if rec_map and rec_map.target_id:
-            # Check record actually exists in DB
             target_rec = self.env[rel_model].browse(rec_map.target_id).exists()
             return target_rec.id if target_rec else False
         return False
@@ -218,7 +224,7 @@ class MigrationMappingLine(models.Model):
     def _resolve_many2one(self, val):
         """Resolves Many2one target record ID."""
         rel_model = self.relation_model
-        if not rel_model:
+        if not rel_model or not val:
             return False
 
         rel_obj = self.env[rel_model]
@@ -227,7 +233,6 @@ class MigrationMappingLine(models.Model):
             return self._resolve_from_record_map(val)
 
         elif self.lookup_strategy == 'xml_id':
-            # Format: module.xml_id
             xml_id = str(val).strip()
             if '.' not in xml_id:
                 xml_id = f"__import__.{xml_id}"
@@ -254,17 +259,18 @@ class MigrationMappingLine(models.Model):
     def _resolve_many2many(self, val):
         """Resolves Many2many record IDs list formatted as ORM command list [(6, 0, [ids])]."""
         rel_model = self.relation_model
-        if not rel_model:
+        if not rel_model or not val:
             return False
 
         rel_obj = self.env[rel_model]
-        # Split comma-separated string if needed
         items = [i.strip() for i in str(val).split(',')] if isinstance(val, str) else ([val] if not isinstance(val, list) else val)
         ids = []
 
         match_field = self.lookup_field_id.name if self.lookup_field_id else 'name'
 
         for item in items:
+            if not item:
+                continue
             if self.lookup_strategy == 'record_map':
                 rec_id = self._resolve_from_record_map(item)
                 if rec_id:
