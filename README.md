@@ -12,13 +12,17 @@
 ## 🌟 Key Highlights
 
 - 🔌 **Universal Source Connectors**: PostgreSQL, MySQL, MSSQL, Oracle, SQLite, ODBC, Visual FoxPro DBF with memo files, CSV, TSV, Excel, JSON, XML, REST APIs, GraphQL, AWS S3, SFTP, and Google Sheets.
-- ⚡ **Incremental Extraction**: Watermark tracking (`WHERE updated_at > :watermark`) for fast delta synchronization.
-- 🤖 **AI-Powered Transformations & Rules**: Natural Language transformations, semantic field auto-mapping, AI validation rule suggester, and automated data quality health scoring (0–100%).
+- 🎨 **Visual Extraction & Query Studio**: Interactive OWL 3 visual schema explorer, column projection selector with custom aliases (`AS`) and type casting (`CAST`), dynamic visual WHERE filter builder, ORDER BY sorting, and live data preview sandbox.
+- ⚡ **Incremental Extraction & Delta Watermarks**: High-speed delta tracking (`WHERE updated_at > :watermark`) across timestamps, dates, and sequential IDs.
+- 🤖 **AI-Powered Query & ETL Assistants**: 
+  - *Extraction Studio*: Natural Language to SQL/API Query Generator, Performance & Index Advisor (suggesting source database indexes), Watermark Advisor, and Query Risk Explainer.
+  - *Transformation Studio*: Natural Language field transformers, semantic auto-mapping, and AI validation rule generation.
+  - *Data Quality Health Scoring*: Automated audit score (0–100%) checking null ratios, duplicates, and format anomalies.
 - 🔄 **11 Transformation Categories**: Cleansing, Normalization, Multi-pattern Date standardizer, Unit conversions (Mass, Length, Volume, Temp), Math calculations, String slicing & splitting, Slugify, Case-When branching, and Python sandbox.
-- 🛡️ **Zero-Failure Savepoint Isolation**: Row-level database savepoints (`with self.env.cr.savepoint():`) prevent individual record errors from failing entire batches.
+- 🛡️ **Zero-Failure Savepoint Isolation & Read-Only Safety**: Row-level database savepoints (`with self.env.cr.savepoint():`) prevent individual record errors from failing entire batches, while strict query validation blocks destructive SQL statements (`DROP`, `DELETE`, `UPDATE`, `TRUNCATE`, etc.).
 - 🎯 **Multi-Strategy Relational Lookups**: Automated resolution for Many2one, Many2many, and One2many by XML ID, key fields, domain expressions, or auto-creation.
 - 🧪 **Dry-Run Simulation**: Run complete data extraction, transformation, and validation pipelines in a rolled-back transaction to identify errors before touching live data.
-- 📊 **Interactive OWL 3 Frontend**: Drag-and-drop Visual Schema Mapper, Live Multi-Stage Execution Console, and Executive Health Dashboard.
+- 📊 **Interactive OWL 3 Frontend**: Visual Extraction Builder, Drag-and-drop Schema Mapper, Live Multi-Stage Execution Console, and Executive Health Dashboard.
 
 ---
 
@@ -28,16 +32,19 @@
 flowchart TD
     subgraph Stage1["1. Data Source Connection"]
         S1["SQL DBs / DBF / CSV / Excel / JSON / REST / GraphQL / S3 / Sheets"]
-        S1 -->|"Latency & Schema Introspection"| S2["Schema Metadata & Samples"]
+        S1 -->|"Schema Introspection & Latency Check"| S2["Discovered Tables & Schema Metadata"]
     end
 
-    subgraph Stage2["2. Data Extraction"]
-        S2 --> E1["Full Extraction OR Incremental Watermark Delta"]
-        E1 -->|"Chunked Records"| T1
+    subgraph Stage2["2. Visual Extraction & AI Studio"]
+        S2 --> E1["Visual Extraction Builder (OWL 3)"]
+        E1 -->|"Field Projections & Aliases"| E2["Compiled Extraction Query"]
+        E1 -->|"Visual WHERE & ORDER BY"| E2
+        AI_EXT["AI Query Assistant<br/>(NL Gen, Index Advisor, Watermark)"] --> E2
+        E2 -->|"Safety Validator (Read-Only Guard)"| E3["Live Sandbox Preview & Extraction"]
     end
 
     subgraph Stage3["3. Data Transformation (AI Assisted)"]
-        T1["Multi-Step Pipeline"]
+        E3 --> T1["Multi-Step Pipeline & Auto-Mapping"]
         T1 --> T2["Cleansing & Regex"]
         T1 --> T3["Type & Unit Conversions"]
         T1 --> T4["Math, Case-When & Python Sandbox"]
@@ -75,7 +82,7 @@ flowchart TD
 
 - [The 6 ETL Stages](#-the-6-etl-stages)
   - [1. Data Source Connection](#1-data-source-connection)
-  - [2. Data Extraction](#2-data-extraction)
+  - [2. Visual Extraction & AI Query Studio](#2-visual-extraction--ai-query-studio)
   - [3. Data Transformation (AI Integration)](#3-data-transformation-ai-integration)
   - [4. Data Loading](#4-data-loading)
   - [5. Validation (AI Integration)](#5-validation-ai-integration)
@@ -84,9 +91,11 @@ flowchart TD
 - [Quick Start Guide](#-quick-start-guide)
   - [Step 1: Set Up an AI Provider (Optional)](#step-1-set-up-an-ai-provider-optional)
   - [Step 2: Create a Data Connection](#step-2-create-a-data-connection)
-  - [Step 3: Build a Mapping Template with Visual Mapper](#step-3-build-a-mapping-template-with-visual-mapper)
-  - [Step 4: Define Validation Rules](#step-4-define-validation-rules)
-  - [Step 5: Execute Migration Plan](#step-5-execute-migration-plan)
+  - [Step 3: Build an Extraction Query with Visual Studio](#step-3-build-an-extraction-query-with-visual-studio)
+  - [Step 4: Build a Mapping Template with Visual Mapper](#step-4-build-a-mapping-template-with-visual-mapper)
+  - [Step 5: Define Validation Rules](#step-5-define-validation-rules)
+  - [Step 6: Execute Migration Plan](#step-6-execute-migration-plan)
+- [Visual Extraction Studio Reference](#-visual-extraction-studio-reference)
 - [Transformation Operations Reference](#-transformation-operations-reference)
 - [Validation Rules Reference](#-validation-rules-reference)
 - [AI Assistant Configuration](#-ai-assistant-configuration)
@@ -105,11 +114,22 @@ Connect to any source system with live latency diagnostics:
 - **Files**: CSV, TSV, Excel (`.xlsx` / `.xls`), JSON, and XML (via manual file upload, server filesystem path, or remote HTTP URL).
 - **Web Services & APIs**: REST APIs (Bearer Token, Basic Auth, API-Key header, OAuth2 with offset/page pagination) and GraphQL endpoints.
 - **Cloud & Remote**: AWS S3 buckets, SFTP servers, Google Sheets (live CSV export), and Remote Odoo XML-RPC / JSON-RPC instances.
+- **Automated Catalog Introspection**: Discovers database tables, views, columns, and data types automatically.
 
-### 2. Data Extraction
-- **Watermark Incremental Sync**: Extract only modified records using timestamp/numeric watermarks (`WHERE updated_at > :watermark`).
-- **Custom SQL & API Query Overrides**: Write complex SQL queries with parameter binding or JSON body templates.
-- **Memory Streaming**: Chunked processing to handle millions of rows without memory exhaustion.
+### 2. Visual Extraction & AI Query Studio
+- **OWL 3 Visual Extraction Builder**:
+  - Browse tables/views with instant search filtering.
+  - Multi-select column projections with custom output aliases (`AS`) and explicit data type casting (`CAST(col AS type)`).
+  - Dynamic WHERE filter builder with operators (`=`, `!=`, `>`, `<`, `LIKE`, `ILIKE`, `IN`, `IS NULL`, `IS NOT NULL`, `:watermark`) and `AND`/`OR` connectors.
+  - ORDER BY sorting builder with Ascending / Descending control.
+- **AI Extraction Assistants**:
+  - *Natural Language Query Generator*: Type prompts like `"Extract all active customers created in 2025 where total orders > 5,000"` to automatically construct the complete visual query.
+  - *Performance & Index Advisor*: Evaluates query structure, detects table-scan bottlenecks, and generates `CREATE INDEX` SQL statements to run on the legacy source database for maximum extraction speed.
+  - *Watermark Advisor*: Analyzes column datatypes and sample data to identify the ideal incremental tracking column.
+  - *Query Explainer & Profiler*: Provides plain-language explanations of query logic, potential null risks, and timezone considerations.
+- **Live Sandbox Preview**: Test and sample top records in a formatted data table with execution latency (ms) reporting.
+- **Strict Read-Only Safety**: Rejects queries containing `DROP`, `DELETE`, `UPDATE`, `INSERT`, `TRUNCATE`, `ALTER`, or `CREATE`.
+- **Downstream Field Synchronization**: Projected field aliases automatically populate available source variables in downstream mapping templates.
 
 ### 3. Data Transformation (AI Integration)
 Build flexible, multi-step transformation pipelines per field:
@@ -161,6 +181,7 @@ Build flexible, multi-step transformation pipelines per field:
 - **Granular Audit Logs**: Detailed logs per row containing raw JSON, transformed values, target IDs, and full tracebacks.
 - **AI Error Resolution Advice**: One-click prompt that submits the error traceback and payloads to AI for instant root-cause analysis and suggested fix.
 - **OWL 3 Interactive UI**:
+  - **Visual Extraction Builder**: Interactive schema explorer and SQL query generator.
   - **Visual Schema Mapper**: Drag-and-drop interactive canvas with bezier connector lines.
   - **Plan Execution Console**: Real-time progress bar, stage status badges, and throughput metrics (records/sec).
   - **ETL Dashboard**: Aggregated KPIs, job distributions, and error analysis.
@@ -185,38 +206,65 @@ Build flexible, multi-step transformation pipelines per field:
 ### Step 1: Set Up an AI Provider (Optional)
 1. Go to **Migration Studio** -> **ETL Pipeline Setup** -> **AI Assistant Settings**.
 2. Click **New** and choose your provider:
-   - **OpenAI**: Enter your API Key and Model (e.g., `gpt-4o`).
-   - **Google Gemini**: Enter your Gemini API Key (`gemini-1.5-pro` or `gemini-1.5-flash`).
+   - **OpenAI**: Enter your API Key and Model (e.g., `gpt-4o-mini`).
+   - **Google Gemini**: Enter your Gemini API Key (`gemini-1.5-flash` or `gemini-1.5-pro`).
    - **Anthropic Claude**: Enter your Claude API Key (`claude-3-5-sonnet-20241022`).
    - **Local Ollama**: Set Base URL to `http://localhost:11434` and Model (e.g., `llama3`).
 3. Click **Test AI Connection** -> Mark as **Default Provider**.
 
 ### Step 2: Create a Data Connection
 1. Navigate to **Migration Studio** -> **Data Connections** -> Click **New**.
-2. Select your **Connection Type** (e.g., CSV, Excel, PostgreSQL, REST API).
+2. Select your **Connection Type** (e.g., CSV, Excel, PostgreSQL, MySQL, REST API).
 3. Upload your file or specify database/API credentials.
 4. Click **Test Connection & Fetch Schema** to inspect detected columns, data types, and preview rows.
 
-### Step 3: Build a Mapping Template with Visual Mapper
+### Step 3: Build an Extraction Query with Visual Studio
+1. Navigate to **ETL Pipeline Setup** -> **Extraction Queries** -> Click **New**.
+2. Select your **Data Connection** and Strategy (Full, Incremental Watermark, or Custom Query).
+3. In the **Visual Query Studio** tab:
+   - Browse source tables and check desired column projections.
+   - Assign output aliases (`AS`) and type casting (`CAST`) where needed.
+   - Add visual filter rules in the **WHERE Filters** tab (e.g., `active = 1` or `write_date > :watermark`).
+   - Or click **AI Assistant** -> Describe what you need in plain English/Thai -> Click **Generate Visual Query**.
+4. Click **Run Preview** to test extraction and inspect sample data.
+
+### Step 4: Build a Mapping Template with Visual Mapper
 1. Navigate to **Mapping Templates** -> Click **New**.
-2. Select your **Connection** and **Target Odoo Model** (e.g., `res.partner` or `product.template`).
+2. Select your **Connection**, **Extraction Query** (optional, recommended for custom projections), and **Target Odoo Model** (e.g., `res.partner`).
 3. Switch to the **Visual Diagram Mapper** tab:
    - Click **Auto-Map** or **AI Auto-Map** to match fields automatically.
    - Drag source columns from the left tree onto target fields in the center tree.
    - Select any mapped pair to customize multi-step transformation pipelines in the right panel.
 4. Click **Save Field Mappings**.
 
-### Step 4: Define Validation Rules
+### Step 5: Define Validation Rules
 1. In your template, switch to the **Validation Rules** tab.
 2. Click **AI Suggest Rules** to let AI generate sensible validation rules, or add them manually:
    - e.g. Mandatory `name`, Regex for `email`, Numeric range for `price > 0`.
 3. Click **Audit Data Quality** to generate an immediate Quality Health Score (0–100%).
 
-### Step 5: Execute Migration Plan
+### Step 6: Execute Migration Plan
 1. Navigate to **Migration Plans** -> Select or create a multi-stage plan.
 2. Click **Pre-Flight Check** to ensure all connections and templates are healthy.
 3. Click **Execute Plan** -> Choose **Dry-Run Simulation** to verify with zero database risk, or choose **Live Execution**.
 4. Monitor live progress, throughput (records/second), and audit logs in the **Live Execution Console**.
+
+---
+
+## 🔍 Visual Extraction Studio Reference
+
+| Feature | Description | Example / Syntax |
+| :--- | :--- | :--- |
+| **Table Explorer** | Discovers and switches between source tables/views. | `customers`, `v_invoices` |
+| **Column Projection** | Checkbox selection with column alias and casting. | `CAST(cust_id AS integer) AS ref` |
+| **Filter Builder (WHERE)** | Visual condition rows with operators and `AND`/`OR`. | `status = 'ACTIVE' AND amount > 1000` |
+| **Incremental Watermark** | Dynamic binding for delta extraction. | `updated_at > :watermark` |
+| **ORDER BY Sorting** | Multi-column sort order specification. | `ORDER BY updated_at ASC` |
+| **AI Query Generator** | Natural language to visual query translation. | Prompt: *"Extract all vendors created in 2025"* |
+| **AI Performance Advisor** | Analyzes query bottlenecks and suggests source indexes. | `CREATE INDEX idx_customers_updated_at...` |
+| **AI Watermark Advisor** | Inspects schema to suggest the best delta column. | Detects `write_date` or auto-increment `id` |
+| **AI Query Explainer** | Generates a plain-language audit and null risk report. | Identifies potential null values and edge cases |
+| **Live Preview Sandbox** | On-demand test execution returning top N rows. | Sample grid with row counts and latency (ms) |
 
 ---
 
@@ -267,17 +315,17 @@ The module supports multiple AI LLM providers with zero external dependencies (u
 # Programmatic AI completion helper example:
 ai_config = self.env['migration.ai.config'].get_default_provider()
 response = ai_config.call_ai_completion(
-    prompt="Normalize this customer address into JSON: 123 Main St, New York, NY 10001",
+    user_prompt="Normalize this customer address into JSON: 123 Main St, New York, NY 10001",
     json_mode=True
 )
 ```
 
 Supported Providers:
-1. **OpenAI**: Compatible with `gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, etc.
-2. **Google Gemini**: Compatible with `gemini-1.5-pro`, `gemini-1.5-flash`.
+1. **OpenAI**: Compatible with `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`.
+2. **Google Gemini**: Compatible with `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`.
 3. **Anthropic Claude**: Compatible with `claude-3-5-sonnet-20241022`, `claude-3-haiku-20240307`.
 4. **Ollama**: Compatible with local models (`llama3`, `mistral`, `qwen2.5`, etc.) with no API key needed.
-5. **Custom / Local Endpoints**: OpenAI-compatible REST endpoints (e.g. vLLM, LocalAI).
+5. **Custom / Local Endpoints**: OpenAI-compatible REST endpoints (e.g. vLLM, LocalAI, Ollama OpenAI proxy).
 
 ---
 
@@ -288,9 +336,9 @@ Supported Providers:
 | Model Name | Description | Key Methods |
 | :--- | :--- | :--- |
 | `migration.ai.config` | AI Provider Configuration & LLM Bridge | `call_ai_completion()`, `action_test_ai_connection()` |
-| `migration.connection` | Source Connectivity & Introspection | `action_test_connection()`, `_fetch_raw_records()` |
-| `migration.extraction` | Query Engine & Watermark State | `execute_extraction()`, `action_reset_watermark()` |
-| `migration.template` | Mapping Template & AI Helpers | `action_ai_auto_map_fields()`, `action_audit_data_quality()` |
+| `migration.connection` | Source Connectivity & Schema Introspection | `inspect_source_schema()`, `action_test_connection()`, `_fetch_raw_records()` |
+| `migration.extraction` | Query Studio, Safety Guard & Watermark Engine | `compile_query_from_visual()`, `execute_extraction()`, `run_preview_extraction()`, `action_ai_generate_query()`, `action_ai_optimize_query()` |
+| `migration.template` | Mapping Template & AI Helpers | `action_ai_auto_map_fields()`, `action_audit_data_quality()`, `get_available_source_variables()` |
 | `migration.mapping.line` | Field Pair Mapping & Lookups | `convert_value()`, `action_test_pipeline()` |
 | `migration.mapping.transform`| Multi-Step Transformation Engine | `apply_transform()` |
 | `migration.transform.template`| Reusable Preset Templates | `action_apply_preset()` |
@@ -306,10 +354,11 @@ Supported Providers:
 
 The module includes comprehensive automated unit test suites in `tests/`:
 
+- `test_migration_extraction_ai.py`: Tests visual query compilation, alias & cast projections, SQL safety validation (blocking malicious statements), downstream template column sync, live sample preview, and AI query/index advisor.
+- `test_migration_extraction_validation.py`: Tests incremental watermark delta tracking, validation rules, AI configuration, and job error filtering.
 - `test_migration_transform.py`: Tests data cleansing, date formatting, unit conversions, and chained pipelines.
 - `test_data_transformation_template.py`: Tests preset templates, math formulas, string slicing, and slugify.
 - `test_migration_plan.py`: Tests multi-stage plans, pre-flight checks, dry-run simulation rollback, and execution runs.
-- `test_migration_extraction_validation.py`: Tests incremental watermark delta tracking, validation rules, AI configuration, and job error filtering.
 
 To run tests via the Odoo CLI:
 ```bash

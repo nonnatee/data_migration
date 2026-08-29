@@ -7,12 +7,13 @@ This guide is designed for developers who wish to customize, extend, or integrat
 ## Table of Contents
 1. [Module Architecture & Directory Structure](#1-module-architecture--directory-structure)
 2. [Data Model Schema & Relationships](#2-data-model-schema--relationships)
-3. [Extending Data Source Connectors](#3-extending-data-source-connectors)
-4. [Adding Custom Transformation Operations](#4-adding-custom-transformation-operations)
-5. [Integrating AI LLM Providers Programmatically](#5-integrating-ai-llm-providers-programmatically)
-6. [Savepoint Transaction Isolation Pattern](#6-savepoint-transaction-isolation-pattern)
-7. [Frontend Architecture (OWL 3 Components)](#7-frontend-architecture-owl-3-components)
-8. [Writing Unit Tests](#8-writing-unit-tests)
+3. [Extending Data Source Connectors & Schema Discovery](#3-extending-data-source-connectors--schema-discovery)
+4. [Extraction Engine & Visual Query Builder API](#4-extraction-engine--visual-query-builder-api)
+5. [Adding Custom Transformation Operations](#5-adding-custom-transformation-operations)
+6. [Integrating AI LLM Providers Programmatically](#6-integrating-ai-llm-providers-programmatically)
+7. [Savepoint Transaction Isolation Pattern](#7-savepoint-transaction-isolation-pattern)
+8. [Frontend Architecture (OWL 3 Components)](#8-frontend-architecture-owl-3-components)
+9. [Writing Automated Unit Tests](#9-writing-automated-unit-tests)
 
 ---
 
@@ -22,8 +23,8 @@ This guide is designed for developers who wish to customize, extend, or integrat
 data_migration/
 ├── models/
 │   ├── migration_ai_config.py            # AI LLM provider configuration & API bridge
-│   ├── migration_connection.py           # Multi-source connectors & schema discovery
-│   ├── migration_extraction.py           # Queries, parameters, and watermark delta sync
+│   ├── migration_connection.py           # Multi-source connectors & schema introspection
+│   ├── migration_extraction.py           # Visual query builder, SQL safety & delta watermarks
 │   ├── migration_template.py             # Field mappings, AI auto-map & quality audit
 │   ├── migration_mapping_line.py         # Field pairs, relational lookups, pipeline runner
 │   ├── migration_mapping_transform.py    # 11 transformation categories & Python sandbox
@@ -41,12 +42,17 @@ data_migration/
 │   ├── migration_run_wizard.py           # Quick single-template execution wizard
 │   └── migration_plan_run_wizard.py      # Multi-stage execution & simulation wizard
 ├── views/                                # Odoo 18/19 XML views (list, form, search, menus)
+│   ├── migration_extraction_views.xml    # Extraction query list, search, and form views
+│   ├── migration_connection_views.xml    # Connection forms and schema viewer
+│   ├── migration_template_views.xml      # Mapping template form and visual mapper tab
+│   └── ...
 ├── static/src/components/
+│   ├── visual_extraction_builder/        # OWL 3 Visual Query & Field Selector widget
 │   ├── visual_mapper/                    # OWL 3 visual schema & pipeline builder
 │   ├── migration_plan_console/           # OWL 3 real-time multi-stage execution console
 │   └── migration_dashboard/              # OWL 3 executive ETL metrics dashboard
 ├── tests/                                # Automated unit test suites
-├── doc/                                  # Documentation guides
+├── doc/                                  # Architecture, Developer & User documentation
 └── __manifest__.py                       # Addon manifest declaration
 ```
 
@@ -56,9 +62,11 @@ data_migration/
 
 ```mermaid
 erDiagram
-    MIGRATION_AI_CONFIG ||--o{ MIGRATION_TEMPLATE : "AI Assistance"
-    MIGRATION_CONNECTION ||--o{ MIGRATION_EXTRACTION : "provides schema"
+    MIGRATION_AI_CONFIG ||--o{ MIGRATION_EXTRACTION : "AI Query Generation & Index Advice"
+    MIGRATION_AI_CONFIG ||--o{ MIGRATION_TEMPLATE : "Semantic Auto-Mapping & Rule Suggestion"
+    MIGRATION_CONNECTION ||--o{ MIGRATION_EXTRACTION : "provides schema & tables"
     MIGRATION_CONNECTION ||--o{ MIGRATION_TEMPLATE : "supplies data"
+    MIGRATION_EXTRACTION ||--o{ MIGRATION_TEMPLATE : "provides projected aliases"
     MIGRATION_TEMPLATE ||--o{ MIGRATION_MAPPING_LINE : "defines mappings"
     MIGRATION_TEMPLATE ||--o{ MIGRATION_VALIDATION_RULE : "enforces rules"
     MIGRATION_MAPPING_LINE ||--o{ MIGRATION_MAPPING_TRANSFORM : "executes pipeline"
@@ -73,9 +81,9 @@ erDiagram
 
 ---
 
-## 3. Extending Data Source Connectors
+## 3. Extending Data Source Connectors & Schema Discovery
 
-To add a new connection type (e.g. SAP HANA, Snowflake, HubSpot), inherit from `migration.connection` and extend the selection field and extraction method:
+To add a new connection type (e.g. Snowflake, MongoDB, BigQuery), inherit from `migration.connection`, extend the `conn_type` selection, and implement both record extraction and schema discovery:
 
 ```python
 # -*- coding: utf-8 -*-
@@ -97,32 +105,80 @@ class MigrationConnection(models.Model):
             return self._fetch_from_snowflake(limit=limit)
         return super()._fetch_raw_records(limit=limit)
 
-    def _fetch_from_snowflake(self, limit=None):
-        # Implementation using snowflake.connector
-        import snowflake.connector
-        ctx = snowflake.connector.connect(
-            user=self.db_user,
-            password=self.db_password,
-            account=self.db_host,
-            warehouse=self.snowflake_warehouse,
-            database=self.snowflake_database,
-            schema=self.snowflake_schema
-        )
-        cs = ctx.cursor(snowflake.connector.DictCursor)
-        query = self.db_query or f"SELECT * FROM {self.snowflake_schema}.data"
-        if limit:
-            query += f" LIMIT {int(limit)}"
-        cs.execute(query)
-        rows = cs.fetchall()
-        cs.close()
-        ctx.close()
-        columns = list(rows[0].keys()) if rows else []
-        return rows, columns
+    def inspect_source_schema(self):
+        """Discovers tables and columns for the Visual Extraction Studio."""
+        if self.conn_type == 'snowflake':
+            return self._inspect_snowflake_schema()
+        return super().inspect_source_schema()
+
+    def _inspect_snowflake_schema(self):
+        # Implementation querying Snowflake INFORMATION_SCHEMA.TABLES / COLUMNS
+        # Returns: {'conn_type': 'snowflake', 'tables': [{'name': '...', 'columns': [...]}]}
+        pass
 ```
 
 ---
 
-## 4. Adding Custom Transformation Operations
+## 4. Extraction Engine & Visual Query Builder API
+
+The `migration.extraction` model provides high-level programmatic methods for query compilation, safety validation, live testing, and AI optimization:
+
+### Query Compilation & Safety Validation
+```python
+extraction = self.env['migration.extraction'].create({
+    'name': 'Customers Extraction',
+    'connection_id': conn.id,
+    'selected_table': 'legacy_customers',
+    'use_visual_builder': True,
+    'selected_fields_json': json.dumps([
+        {'field': 'id', 'alias': 'customer_id', 'cast': 'integer', 'selected': True},
+        {'field': 'name', 'alias': 'full_name', 'cast': 'varchar', 'selected': True},
+    ]),
+    'where_clauses_json': json.dumps([
+        {'field': 'active', 'operator': '=', 'value': '1', 'conjunction': 'AND'}
+    ]),
+})
+
+# Compile SQL query:
+sql = extraction.compile_query_from_visual()
+# Returns: "SELECT CAST(id AS integer) AS customer_id, CAST(name AS varchar) AS full_name\nFROM legacy_customers\nWHERE active = 1"
+
+# Read-only validation guard:
+extraction._validate_query_safety(sql)  # Raises UserError if DROP/DELETE/UPDATE/INSERT are present
+```
+
+### Live Preview Sandbox API
+```python
+# Execute sample preview without updating watermark
+preview = extraction.run_preview_extraction(limit=10)
+# Returns:
+# {
+#     'success': True,
+#     'records': [...],
+#     'columns': ['customer_id', 'full_name'],
+#     'total_extracted': 10,
+#     'latency_ms': 14.5
+# }
+```
+
+### AI Optimization & Advisory API
+```python
+# 1. Generate query from Natural Language prompt:
+res = extraction.action_ai_generate_query("Extract active vendors in California with orders in 2025")
+
+# 2. Analyze query performance and get source index recommendations:
+opt = extraction.action_ai_optimize_query()
+print(extraction.ai_optimization_notes)
+# Contains index recommendations (e.g. CREATE INDEX idx_orders_date ON ...)
+
+# 3. Suggest optimal watermark column:
+wm = extraction.action_ai_advise_watermark()
+print(f"Optimal column: {wm['watermark_column']}")
+```
+
+---
+
+## 5. Adding Custom Transformation Operations
 
 To add new transformation logic, inherit from `migration.mapping.transform` and override `apply_transform`:
 
@@ -149,7 +205,7 @@ class MigrationMappingTransform(models.Model):
 
 ---
 
-## 5. Integrating AI LLM Providers Programmatically
+## 6. Integrating AI LLM Providers Programmatically
 
 Use `migration.ai.config` to call configured LLMs with built-in JSON parsing and SSL handling:
 
@@ -161,27 +217,18 @@ if not ai_config:
 
 # Call with JSON mode for structured data extraction
 result = ai_config.call_ai_completion(
-    prompt="""
+    user_prompt="""
     Parse this address into JSON fields (street, city, state_code, zip, country_code):
     '450 Serra Mall, Stanford, CA 94305, USA'
     """,
     system_prompt="You are a data cleansing assistant. Output strict JSON only.",
     json_mode=True
 )
-
-# result is a Python dict:
-# {
-#     "street": "450 Serra Mall",
-#     "city": "Stanford",
-#     "state_code": "CA",
-#     "zip": "94305",
-#     "country_code": "US"
-# }
 ```
 
 ---
 
-## 6. Savepoint Transaction Isolation Pattern
+## 7. Savepoint Transaction Isolation Pattern
 
 The execution engine in `migration.job` uses **Savepoint Isolation** to guarantee that invalid rows never fail an entire migration batch:
 
@@ -201,7 +248,6 @@ for idx, row in enumerate(records):
             passed, err_msg, action = self._validate_rules(pre_load_rules, transformed_vals, row)
             if not passed:
                 if action == 'reject_record':
-                    # Skip row and log error
                     self._log_error(idx + 1, source_key, err_msg, row, transformed_vals)
                     continue
                 elif action == 'abort_stage':
@@ -221,48 +267,43 @@ for idx, row in enumerate(records):
 
 ---
 
-## 7. Frontend Architecture (OWL 3 Components)
+## 8. Frontend Architecture (OWL 3 Components)
 
 All frontend components adhere to Odoo 19 / OWL 3 directives:
 - **`t-out`** is used for dynamic text interpolation (OWL 3 requirement; never `t-esc`).
 - **Plain prop syntax** is used on component tags (no `t-att-*` on custom component tags).
-- **SVG Bezier Connectors**: Dynamically calculates cubic bezier curves between source column DOM ports and target field DOM ports on window resize or scroll.
-
-### Registering Custom Views / Actions
-Components are registered in the Odoo registry:
+- **Widgets Registered in `view_widgets`**:
+  - `visual_extraction_builder`: Visual query & field selector widget.
+  - `visual_mapper`: Drag-and-drop schema mapper widget.
 
 ```javascript
 import { registry } from "@web/core/registry";
-import { VisualMapperWidget } from "./visual_mapper";
+import { VisualExtractionBuilder } from "./visual_extraction_builder";
 
-registry.category("view_widgets").add("visual_mapper", {
-    component: VisualMapperWidget,
+registry.category("view_widgets").add("visual_extraction_builder", {
+    component: VisualExtractionBuilder,
 });
 ```
 
 ---
 
-## 8. Writing Unit Tests
+## 9. Writing Automated Unit Tests
 
 Unit tests inherit from `odoo.tests.common.TransactionCase`.
 
-### Example Test Suite:
+### Example Test Case:
 ```python
 # -*- coding: utf-8 -*-
 from odoo.tests import common
+from odoo.exceptions import UserError
 
-class TestMyCustomETL(common.TransactionCase):
+class TestCustomExtraction(common.TransactionCase):
 
-    def test_custom_transformation(self):
-        mapping_line = self.env['migration.mapping.line'].create({
-            'template_id': self.template.id,
-            'source_field': 'custom_code',
-            'target_field_id': self.name_field.id,
+    def test_query_safety(self):
+        extraction = self.env['migration.extraction'].create({
+            'name': 'Test Extraction',
+            'connection_id': self.conn.id,
         })
-        transform = self.env['migration.mapping.transform'].create({
-            'line_id': mapping_line.id,
-            'transform_category': 'slugify',
-        })
-        res = transform.apply_transform("My Test SKU #123")
-        self.assertEqual(res, "my_test_sku_123")
+        with self.assertRaises(UserError):
+            extraction._validate_query_safety("DROP TABLE customers;")
 ```

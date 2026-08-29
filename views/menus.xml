@@ -31,6 +31,12 @@
               action="action_migration_connection"
               sequence="10"/>
 
+    <menuitem id="menu_migration_extractions"
+              name="Extraction Queries"
+              parent="menu_migration_studio_config"
+              action="action_migration_extraction"
+              sequence="15"/>
+
     <menuitem id="menu_migration_templates"
               name="Mapping Templates"
               parent="menu_migration_studio_config"

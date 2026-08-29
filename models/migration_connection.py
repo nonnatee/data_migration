@@ -287,6 +287,175 @@ class MigrationConnection(models.Model):
         else:
             raise UserError(_("Unsupported connection type: %s") % self.conn_type)
 
+    def inspect_source_schema(self):
+        """Introspects source connection to discover tables, views, and column definitions."""
+        self.ensure_one()
+        schema = {
+            'conn_type': self.conn_type,
+            'tables': [],
+        }
+
+        # 1. SQL Database Inspection (PostgreSQL, MySQL, MSSQL, SQLite, Oracle)
+        if self.conn_type == 'database_sql':
+            try:
+                schema['tables'] = self._inspect_sql_schema()
+            except Exception as e:
+                _logger.warning("Direct SQL schema inspection failed, falling back to sample schema: %s", str(e))
+
+        elif self.conn_type == 'foxpro_dbf' and self.source_type == 'path' and self.file_path and os.path.isdir(self.file_path):
+            try:
+                dbf_files = [f for f in os.listdir(self.file_path) if f.lower().endswith('.dbf')]
+                for dbf in dbf_files:
+                    tname = os.path.splitext(dbf)[0]
+                    schema['tables'].append({
+                        'name': tname,
+                        'type': 'table',
+                        'columns': []
+                    })
+            except Exception as e:
+                _logger.warning("Failed to list DBF directory: %s", str(e))
+
+        # Fallback / File / API / Single-source connection tables
+        if not schema['tables']:
+            cols = json.loads(self.source_columns or '[]')
+            schema_info = json.loads(self.source_schema_info or '{}')
+            tname = self.dbf_table_name or self.excel_sheet_name or self.file_name or self.name or 'source_table'
+            tname = re.sub(r'[^a-zA-Z0-9_]', '_', tname).strip('_') or 'source_data'
+            col_defs = []
+            for c in cols:
+                info = schema_info.get(c, {})
+                col_defs.append({
+                    'name': c,
+                    'type': info.get('inferred_type', 'varchar'),
+                    'sample_value': info.get('sample_value', ''),
+                    'nullable': True,
+                    'is_pk': c.lower() in ('id', 'uuid', 'code', 'ref', 'key'),
+                })
+            schema['tables'].append({
+                'name': tname,
+                'type': 'table',
+                'columns': col_defs
+            })
+
+        return schema
+
+    def _inspect_sql_schema(self):
+        """Discovers tables and columns from SQL database catalogs."""
+        self.ensure_one()
+        db_type = self.db_type
+        host = self.db_host or 'localhost'
+        port = self.db_port or 5432
+        dbname = self.db_name
+        user = self.db_user
+        pwd = self.db_password
+        tables_list = []
+
+        if db_type == 'postgresql':
+            import psycopg2
+            import psycopg2.extras
+            ssl_mode = self.db_ssl_mode or 'prefer'
+            conn = psycopg2.connect(host=host, port=port, dbname=dbname, user=user, password=pwd, sslmode=ssl_mode)
+            try:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cursor.execute("""
+                    SELECT table_name, table_type 
+                    FROM information_schema.tables 
+                    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+                    ORDER BY table_name
+                    LIMIT 100
+                """)
+                raw_tables = cursor.fetchall()
+                for rt in raw_tables:
+                    tname = rt['table_name']
+                    cursor.execute("""
+                        SELECT column_name, data_type, is_nullable
+                        FROM information_schema.columns
+                        WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_name = %s
+                        ORDER BY ordinal_position
+                    """, (tname,))
+                    raw_cols = cursor.fetchall()
+                    col_defs = [{
+                        'name': c['column_name'],
+                        'type': c['data_type'],
+                        'nullable': c['is_nullable'] == 'YES',
+                        'is_pk': c['column_name'].lower() in ('id', 'uuid', 'code', 'ref', 'key'),
+                    } for c in raw_cols]
+                    tables_list.append({
+                        'name': tname,
+                        'type': 'view' if 'VIEW' in rt.get('table_type', '') else 'table',
+                        'columns': col_defs
+                    })
+                cursor.close()
+            finally:
+                conn.close()
+
+        elif db_type == 'mysql':
+            import pymysql
+            import pymysql.cursors
+            conn = pymysql.connect(host=host, port=port or 3306, user=user, password=pwd, database=dbname, cursorclass=pymysql.cursors.DictCursor)
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT table_name, table_type 
+                        FROM information_schema.tables 
+                        WHERE table_schema = %s
+                        ORDER BY table_name
+                        LIMIT 100
+                    """, (dbname,))
+                    raw_tables = cursor.fetchall()
+                    for rt in raw_tables:
+                        tname = rt.get('table_name') or rt.get('TABLE_NAME')
+                        cursor.execute("""
+                            SELECT column_name, data_type, is_nullable, column_key
+                            FROM information_schema.columns
+                            WHERE table_schema = %s AND table_name = %s
+                            ORDER BY ordinal_position
+                        """, (dbname, tname))
+                        raw_cols = cursor.fetchall()
+                        col_defs = [{
+                            'name': c.get('column_name') or c.get('COLUMN_NAME'),
+                            'type': c.get('data_type') or c.get('DATA_TYPE'),
+                            'nullable': (c.get('is_nullable') or c.get('IS_NULLABLE')) == 'YES',
+                            'is_pk': (c.get('column_key') or c.get('COLUMN_KEY')) == 'PRI',
+                        } for c in raw_cols]
+                        tables_list.append({
+                            'name': tname,
+                            'type': 'view' if 'VIEW' in str(rt.get('table_type') or rt.get('TABLE_TYPE', '')) else 'table',
+                            'columns': col_defs
+                        })
+            finally:
+                conn.close()
+
+        elif db_type == 'sqlite':
+            import sqlite3
+            db_path = self.file_path or self.db_name
+            if not db_path or not os.path.exists(db_path):
+                return []
+            conn = sqlite3.connect(db_path)
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name")
+                raw_tables = cursor.fetchall()
+                for tname, ttype in raw_tables:
+                    cursor.execute(f"PRAGMA table_info('{tname}')")
+                    raw_cols = cursor.fetchall()
+                    col_defs = [{
+                        'name': c[1],
+                        'type': c[2] or 'TEXT',
+                        'nullable': not bool(c[3]),
+                        'is_pk': bool(c[5]),
+                    } for c in raw_cols]
+                    tables_list.append({
+                        'name': tname,
+                        'type': ttype,
+                        'columns': col_defs
+                    })
+                cursor.close()
+            finally:
+                conn.close()
+
+        return tables_list
+
     # ------------------------------------------------------------
     # 1. FILE & STREAM RETRIEVAL HELPERS
     # ------------------------------------------------------------

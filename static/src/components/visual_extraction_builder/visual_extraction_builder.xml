@@ -1,0 +1,518 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="data_migration.VisualExtractionBuilder">
+        <div class="o_visual_extraction_builder d-flex flex-column h-100 bg-view">
+            <!-- 1. Header Toolbar -->
+            <div class="builder-toolbar d-flex align-items-center justify-content-between p-3 border-bottom bg-light">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fs-5 fw-bold text-primary">
+                            <i class="fa fa-filter me-1"/> Extraction Query Studio
+                        </span>
+                        <span class="badge bg-secondary" t-out="state.connType"/>
+                        <span t-if="state.connectionName" class="text-muted small">
+                            (<t t-out="state.connectionName"/>)
+                        </span>
+                    </div>
+
+                    <!-- Watermark Status Badge -->
+                    <div t-if="state.watermarkColumn" class="badge bg-info text-dark d-flex align-items-center gap-1">
+                        <i class="fa fa-clock-o"/>
+                        <span>Watermark: <b t-out="state.watermarkColumn"/></span>
+                        <span t-if="state.lastWatermarkValue" class="opacity-75">
+                            [<t t-out="state.lastWatermarkValue"/>]
+                        </span>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                            t-on-click="() => { this.state.activeTab = 'ai'; this.state.aiTab = 'generate'; }"
+                            t-att-disabled="state.isAiProcessing">
+                        <i class="fa fa-magic text-warning"/>
+                        <span>AI Assistant</span>
+                    </button>
+
+                    <button class="btn btn-sm btn-outline-success d-flex align-items-center gap-1"
+                            t-on-click="() => this.runPreview()"
+                            t-att-disabled="state.isRunningPreview or state.isSaving">
+                        <i t-if="state.isRunningPreview" class="fa fa-spinner fa-spin"/>
+                        <i t-else="" class="fa fa-play"/>
+                        <span>Run Preview</span>
+                    </button>
+
+                    <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                            t-on-click="() => this.saveAll()"
+                            t-att-disabled="state.isSaving">
+                        <i t-if="state.isSaving" class="fa fa-spinner fa-spin"/>
+                        <i t-else="" class="fa fa-save"/>
+                        <span>Save Extraction</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. Navigation Tabs -->
+            <div class="builder-nav border-bottom px-3 pt-2 bg-light">
+                <ul class="nav nav-tabs border-bottom-0">
+                    <li class="nav-item">
+                        <button class="nav-link"
+                                t-att-class="{'active fw-bold': state.activeTab === 'visual'}"
+                                t-on-click="() => { this.state.activeTab = 'visual'; }">
+                            <i class="fa fa-columns me-1"/> Field Selection (<t t-out="state.selectedFields.filter(f => f.selected).length"/>)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link"
+                                t-att-class="{'active fw-bold': state.activeTab === 'filters'}"
+                                t-on-click="() => { this.state.activeTab = 'filters'; }">
+                            <i class="fa fa-filter me-1"/> WHERE Filters (<t t-out="state.whereClauses.length"/>)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link"
+                                t-att-class="{'active fw-bold': state.activeTab === 'sorting'}"
+                                t-on-click="() => { this.state.activeTab = 'sorting'; }">
+                            <i class="fa fa-sort-amount-asc me-1"/> Sorting (<t t-out="state.sortClauses.length"/>)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link"
+                                t-att-class="{'active fw-bold': state.activeTab === 'query'}"
+                                t-on-click="() => { this.state.activeTab = 'query'; }">
+                            <i class="fa fa-code me-1"/> SQL / Query String
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link"
+                                t-att-class="{'active fw-bold': state.activeTab === 'ai'}"
+                                t-on-click="() => { this.state.activeTab = 'ai'; }">
+                            <i class="fa fa-lightbulb-o me-1 text-warning"/> AI Optimizer &amp; Advisor
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link"
+                                t-att-class="{'active fw-bold': state.activeTab === 'preview'}"
+                                t-on-click="() => { this.state.activeTab = 'preview'; }">
+                            <i class="fa fa-table me-1 text-success"/> Data Preview
+                            <span t-if="state.previewRecords.length > 0" class="badge bg-success ms-1">
+                                <t t-out="state.previewRecords.length"/>
+                            </span>
+                        </button>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- 3. Main Content Container -->
+            <div class="builder-content flex-grow-1 p-3 overflow-auto">
+                <!-- Loading State -->
+                <div t-if="state.isLoading" class="d-flex flex-column align-items-center justify-content-center h-100 p-5">
+                    <i class="fa fa-circle-o-notch fa-spin fa-3x text-primary mb-3"/>
+                    <p class="text-muted">Inspecting connection schema and loading visual builder...</p>
+                </div>
+
+                <t t-else="">
+                    <!-- TAB 1: FIELD SELECTION -->
+                    <div t-if="state.activeTab === 'visual'" class="row g-3 h-100">
+                        <!-- Table / Entity Selector Sidebar -->
+                        <div class="col-md-3 border-end pe-3">
+                            <div class="card h-100 shadow-sm border-0 bg-white">
+                                <div class="card-header bg-transparent fw-bold d-flex justify-content-between align-items-center">
+                                    <span><i class="fa fa-database me-1"/> Source Tables</span>
+                                    <span class="badge bg-secondary" t-out="state.tables.length"/>
+                                </div>
+                                <div class="card-body p-2 d-flex flex-column">
+                                    <div class="input-group input-group-sm mb-2">
+                                        <span class="input-group-text"><i class="fa fa-search"/></span>
+                                        <input type="text" class="form-control" placeholder="Search tables..."
+                                               t-model="state.tableSearch"/>
+                                    </div>
+                                    <div class="list-group list-group-flush flex-grow-1 overflow-auto">
+                                        <t t-foreach="state.tables.filter(t => !state.tableSearch || t.name.toLowerCase().includes(state.tableSearch.toLowerCase()))" t-as="tbl" t-key="tbl.name">
+                                            <button type="button"
+                                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-2"
+                                                    t-att-class="{'active': state.selectedTable === tbl.name}"
+                                                    t-on-click="() => this.selectTable(tbl)">
+                                                <span class="text-truncate" t-out="tbl.name"/>
+                                                <span class="badge bg-light text-dark border small" t-out="tbl.type || 'table'"/>
+                                            </button>
+                                        </t>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Column Projection Grid -->
+                        <div class="col-md-9 d-flex flex-column">
+                            <div class="card h-100 shadow-sm border-0 bg-white d-flex flex-column">
+                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="fw-bold">Table Columns:</span>
+                                        <span class="badge bg-primary" t-out="state.selectedTable"/>
+                                        <span class="text-muted small">
+                                            (<t t-out="state.selectedFields.filter(f => f.selected).length"/> of <t t-out="state.selectedFields.length"/> selected)
+                                        </span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button class="btn btn-xs btn-outline-secondary" t-on-click="() => this.selectAllFields(true)">Select All</button>
+                                        <button class="btn btn-xs btn-outline-secondary" t-on-click="() => this.selectAllFields(false)">Deselect All</button>
+                                        <div class="input-group input-group-sm" style="width: 200px;">
+                                            <input type="text" class="form-control" placeholder="Filter columns..." t-model="state.fieldSearch"/>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card-body p-0 flex-grow-1 overflow-auto">
+                                    <table class="table table-hover table-sm align-middle mb-0">
+                                        <thead class="table-light sticky-top">
+                                            <tr>
+                                                <th style="width: 40px;" class="text-center">#</th>
+                                                <th style="width: 220px;">Source Column</th>
+                                                <th style="width: 140px;">Source Type</th>
+                                                <th style="width: 220px;">Target Field Alias (AS)</th>
+                                                <th style="width: 160px;">Type Casting</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <t t-foreach="state.selectedFields.filter(f => !state.fieldSearch || f.field.toLowerCase().includes(state.fieldSearch.toLowerCase()) || (f.alias and f.alias.toLowerCase().includes(state.fieldSearch.toLowerCase())))" t-as="f" t-key="f.field">
+                                                <tr t-att-class="{'table-active': f.selected}">
+                                                    <td class="text-center">
+                                                        <input type="checkbox" class="form-check-input"
+                                                               t-att-checked="f.selected"
+                                                               t-on-change="() => this.toggleField(f)"/>
+                                                    </td>
+                                                    <td>
+                                                        <div class="d-flex align-items-center gap-1">
+                                                            <i t-if="f.is_pk" class="fa fa-key text-warning me-1" title="Primary Key"/>
+                                                            <b t-out="f.field"/>
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge bg-light text-secondary border font-monospace" t-out="f.type || 'varchar'"/>
+                                                    </td>
+                                                    <td>
+                                                        <input type="text" class="form-control form-control-sm"
+                                                               t-att-value="f.alias"
+                                                               placeholder="Alias name..."
+                                                               t-on-change="(ev) => this.updateFieldAlias(f, ev.target.value)"/>
+                                                    </td>
+                                                    <td>
+                                                        <select class="form-select form-select-sm"
+                                                                t-att-value="f.cast || 'none'"
+                                                                t-on-change="(ev) => this.updateFieldCast(f, ev.target.value)">
+                                                            <option value="none">Default (No Cast)</option>
+                                                            <option value="varchar">VARCHAR / TEXT</option>
+                                                            <option value="integer">INTEGER</option>
+                                                            <option value="float">FLOAT / NUMERIC</option>
+                                                            <option value="date">DATE</option>
+                                                            <option value="timestamp">TIMESTAMP</option>
+                                                            <option value="boolean">BOOLEAN</option>
+                                                        </select>
+                                                    </td>
+                                                </tr>
+                                            </t>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: WHERE CLAUSES -->
+                    <div t-if="state.activeTab === 'filters'" class="card shadow-sm border-0 bg-white h-100 d-flex flex-column">
+                        <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+                            <span class="fw-bold"><i class="fa fa-filter text-primary me-1"/> Extraction Filter Rules (WHERE)</span>
+                            <button class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1"
+                                    t-on-click="() => this.addWhereClause()">
+                                <i class="fa fa-plus"/> Add Filter Condition
+                            </button>
+                        </div>
+                        <div class="card-body p-3 flex-grow-1 overflow-auto">
+                            <div t-if="state.whereClauses.length === 0" class="text-center py-5 text-muted">
+                                <i class="fa fa-filter fa-3x mb-3 opacity-50"/>
+                                <h5>No extraction filter rules configured</h5>
+                                <p>Extracting all records. Click <b>"Add Filter Condition"</b> or use the AI Assistant to generate filters.</p>
+                            </div>
+                            <div t-else="" class="d-flex flex-column gap-2">
+                                <t t-foreach="state.whereClauses" t-as="clause" t-key="clause_index">
+                                    <div class="d-flex align-items-center gap-2 p-2 rounded border bg-light">
+                                        <!-- Conjunction (AND / OR) for subsequent rows -->
+                                        <select t-if="clause_index > 0" class="form-select form-select-sm" style="width: 90px;"
+                                                t-att-value="clause.conjunction || 'AND'"
+                                                t-on-change="(ev) => this.updateWhereClause(clause_index, 'conjunction', ev.target.value)">
+                                            <option value="AND">AND</option>
+                                            <option value="OR">OR</option>
+                                        </select>
+                                        <span t-else="" class="badge bg-secondary" style="width: 90px; text-align: center;">WHERE</span>
+
+                                        <!-- Field Selection -->
+                                        <select class="form-select form-select-sm" style="width: 220px;"
+                                                t-att-value="clause.field"
+                                                t-on-change="(ev) => this.updateWhereClause(clause_index, 'field', ev.target.value)">
+                                            <t t-foreach="state.selectedFields" t-as="f" t-key="f.field">
+                                                <option t-att-value="f.field" t-out="f.field"/>
+                                            </t>
+                                        </select>
+
+                                        <!-- Operator Selection -->
+                                        <select class="form-select form-select-sm" style="width: 150px;"
+                                                t-att-value="clause.operator"
+                                                t-on-change="(ev) => this.updateWhereClause(clause_index, 'operator', ev.target.value)">
+                                            <option value="=">=</option>
+                                            <option value="!=">!= (Not Equal)</option>
+                                            <option value="&gt;">&gt; (Greater Than)</option>
+                                            <option value="&gt;=">&gt;= (Greater or Equal)</option>
+                                            <option value="&lt;">&lt; (Less Than)</option>
+                                            <option value="&lt;=">&lt;= (Less or Equal)</option>
+                                            <option value="LIKE">LIKE (%pattern%)</option>
+                                            <option value="ILIKE">ILIKE (Case Insensitive)</option>
+                                            <option value="IN">IN (val1, val2)</option>
+                                            <option value="IS NULL">IS NULL</option>
+                                            <option value="IS NOT NULL">IS NOT NULL</option>
+                                        </select>
+
+                                        <!-- Value Input -->
+                                        <div class="flex-grow-1" t-if="!['IS NULL', 'IS NOT NULL'].includes(clause.operator)">
+                                            <input type="text" class="form-control form-control-sm"
+                                                   t-att-value="clause.value"
+                                                   placeholder="Value or :watermark"
+                                                   t-on-change="(ev) => this.updateWhereClause(clause_index, 'value', ev.target.value)"/>
+                                        </div>
+
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                t-on-click="() => this.removeWhereClause(clause_index)">
+                                            <i class="fa fa-trash"/>
+                                        </button>
+                                    </div>
+                                </t>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: SORTING RULES -->
+                    <div t-if="state.activeTab === 'sorting'" class="card shadow-sm border-0 bg-white h-100 d-flex flex-column">
+                        <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+                            <span class="fw-bold"><i class="fa fa-sort-amount-asc text-primary me-1"/> Extraction Sorting Rules (ORDER BY)</span>
+                            <button class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1"
+                                    t-on-click="() => this.addSortClause()">
+                                <i class="fa fa-plus"/> Add Sort Field
+                            </button>
+                        </div>
+                        <div class="card-body p-3 flex-grow-1 overflow-auto">
+                            <div t-if="state.sortClauses.length === 0" class="text-center py-5 text-muted">
+                                <i class="fa fa-sort-amount-asc fa-3x mb-3 opacity-50"/>
+                                <h5>No explicit sorting configured</h5>
+                                <p>Records will be extracted in natural source sequence.</p>
+                            </div>
+                            <div t-else="" class="d-flex flex-column gap-2">
+                                <t t-foreach="state.sortClauses" t-as="s" t-key="s_index">
+                                    <div class="d-flex align-items-center gap-2 p-2 rounded border bg-light">
+                                        <span class="badge bg-secondary">ORDER BY</span>
+                                        <select class="form-select form-select-sm" style="width: 250px;"
+                                                t-att-value="s.field"
+                                                t-on-change="(ev) => this.updateSortClause(s_index, 'field', ev.target.value)">
+                                            <t t-foreach="state.selectedFields" t-as="f" t-key="f.field">
+                                                <option t-att-value="f.field" t-out="f.field"/>
+                                            </t>
+                                        </select>
+                                        <select class="form-select form-select-sm" style="width: 180px;"
+                                                t-att-value="s.direction || 'ASC'"
+                                                t-on-change="(ev) => this.updateSortClause(s_index, 'direction', ev.target.value)">
+                                            <option value="ASC">ASC (Ascending / Oldest First)</option>
+                                            <option value="DESC">DESC (Descending / Newest First)</option>
+                                        </select>
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                t-on-click="() => this.removeSortClause(s_index)">
+                                            <i class="fa fa-trash"/>
+                                        </button>
+                                    </div>
+                                </t>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: RAW / COMPILED QUERY -->
+                    <div t-if="state.activeTab === 'query'" class="card shadow-sm border-0 bg-white h-100 d-flex flex-column">
+                        <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+                            <span class="fw-bold"><i class="fa fa-code text-primary me-1"/> SQL Extraction Query</span>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="switchVisual"
+                                       t-att-checked="state.useVisualBuilder"
+                                       t-on-change="(ev) => { this.state.useVisualBuilder = ev.target.checked; this.recomputeCompiledQuery(); }"/>
+                                <label class="form-check-label small" for="switchVisual">Visual Builder Mode</label>
+                            </div>
+                        </div>
+                        <div class="card-body p-3 flex-grow-1 d-flex flex-column gap-2">
+                            <div class="alert alert-info py-2 small mb-0">
+                                <i class="fa fa-info-circle me-1"/>
+                                <b>Parameter Guide:</b> Use <code>:watermark</code> inside custom WHERE clauses to bind the incremental watermark state dynamically.
+                            </div>
+                            <div class="flex-grow-1 position-relative">
+                                <textarea class="form-control font-monospace h-100 p-3"
+                                          t-att-readonly="state.useVisualBuilder"
+                                          t-att-value="state.useVisualBuilder ? state.compiledQuery : state.customQuery"
+                                          t-on-change="(ev) => { if (!this.state.useVisualBuilder) { this.state.customQuery = ev.target.value; this.recomputeCompiledQuery(); } }"
+                                          placeholder="SELECT ... FROM ..."/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 5: AI OPTIMIZER & ASSISTANT -->
+                    <div t-if="state.activeTab === 'ai'" class="row g-3 h-100">
+                        <div class="col-md-4 border-end pe-3">
+                            <div class="card h-100 shadow-sm border-0 bg-white d-flex flex-column">
+                                <div class="card-header bg-transparent fw-bold">
+                                    <i class="fa fa-bolt text-warning me-1"/> AI Actions
+                                </div>
+                                <div class="card-body p-3 d-flex flex-column gap-2">
+                                    <button class="btn btn-outline-primary text-start py-2 d-flex align-items-center gap-2"
+                                            t-att-class="{'active': state.aiTab === 'generate'}"
+                                            t-on-click="() => { this.state.aiTab = 'generate'; }">
+                                        <i class="fa fa-magic text-warning fa-lg"/>
+                                        <div>
+                                            <div class="fw-bold">Natural Language Query</div>
+                                            <div class="small text-muted">Generate query from prompt</div>
+                                        </div>
+                                    </button>
+
+                                    <button class="btn btn-outline-success text-start py-2 d-flex align-items-center gap-2"
+                                            t-att-class="{'active': state.aiTab === 'optimize'}"
+                                            t-on-click="() => this.callAiOptimize()"
+                                            t-att-disabled="state.isAiProcessing">
+                                        <i class="fa fa-tachometer text-success fa-lg"/>
+                                        <div>
+                                            <div class="fw-bold">Performance &amp; Index Advisor</div>
+                                            <div class="small text-muted">Analyze bottlenecks &amp; indexes</div>
+                                        </div>
+                                    </button>
+
+                                    <button class="btn btn-outline-info text-start py-2 d-flex align-items-center gap-2"
+                                            t-on-click="() => this.callAiAdviseWatermark()"
+                                            t-att-disabled="state.isAiProcessing">
+                                        <i class="fa fa-clock-o text-info fa-lg"/>
+                                        <div>
+                                            <div class="fw-bold">Watermark Advisor</div>
+                                            <div class="small text-muted">Auto-detect delta sync column</div>
+                                        </div>
+                                    </button>
+
+                                    <button class="btn btn-outline-secondary text-start py-2 d-flex align-items-center gap-2"
+                                            t-on-click="() => this.callAiExplain()"
+                                            t-att-disabled="state.isAiProcessing">
+                                        <i class="fa fa-file-text-o fa-lg"/>
+                                        <div>
+                                            <div class="fw-bold">Query Explainer &amp; Profiler</div>
+                                            <div class="small text-muted">Plain English audit &amp; risks</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI Action Workspace -->
+                        <div class="col-md-8 d-flex flex-column">
+                            <div class="card h-100 shadow-sm border-0 bg-white d-flex flex-column">
+                                <div class="card-header bg-transparent fw-bold d-flex justify-content-between align-items-center">
+                                    <span t-if="state.aiTab === 'generate'">Generate Extraction Query from Prompt</span>
+                                    <span t-elif="state.aiTab === 'optimize'">AI Performance Analysis &amp; Index Strategy</span>
+                                    <span t-elif="state.aiTab === 'explain'">AI Extraction Audit &amp; Profiling Report</span>
+                                    <i t-if="state.isAiProcessing" class="fa fa-spinner fa-spin text-primary"/>
+                                </div>
+
+                                <div class="card-body p-3 flex-grow-1 overflow-auto">
+                                    <!-- Prompt Input for Generate -->
+                                    <div t-if="state.aiTab === 'generate'" class="d-flex flex-column gap-3">
+                                        <label class="form-label fw-bold">Describe the data you want to extract:</label>
+                                        <textarea class="form-control" rows="4"
+                                                  placeholder="e.g. Extract all active customer orders from 2025 where total amount exceeds 10,000, sort by write_date descending..."
+                                                  t-model="state.aiPrompt"/>
+                                        <div class="d-flex justify-content-end">
+                                            <button class="btn btn-primary d-flex align-items-center gap-2"
+                                                    t-on-click="() => this.callAiGenerate()"
+                                                    t-att-disabled="state.isAiProcessing">
+                                                <i t-if="state.isAiProcessing" class="fa fa-spinner fa-spin"/>
+                                                <i t-else="" class="fa fa-sparkles"/>
+                                                <span>Generate Visual Query</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Optimization Notes Display -->
+                                    <div t-elif="state.aiTab === 'optimize'" class="overflow-auto font-monospace p-3 bg-light rounded border">
+                                        <div t-if="!state.aiOptimizationNotes" class="text-muted text-center py-4">
+                                            Click "Performance &amp; Index Advisor" on the left to analyze the current extraction query.
+                                        </div>
+                                        <pre t-else="" class="mb-0 text-dark" style="white-space: pre-wrap;" t-out="state.aiOptimizationNotes"/>
+                                    </div>
+
+                                    <!-- Explanation Display -->
+                                    <div t-elif="state.aiTab === 'explain'" class="overflow-auto p-3 bg-light rounded border">
+                                        <div t-if="!state.aiExplanation" class="text-muted text-center py-4">
+                                            Click "Query Explainer &amp; Profiler" to run the automated audit.
+                                        </div>
+                                        <pre t-else="" class="mb-0 text-dark" style="white-space: pre-wrap;" t-out="state.aiExplanation"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 6: DATA PREVIEW SANDBOX -->
+                    <div t-if="state.activeTab === 'preview'" class="card shadow-sm border-0 bg-white h-100 d-flex flex-column">
+                        <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="fw-bold"><i class="fa fa-table text-success me-1"/> Live Data Preview</span>
+                                <span t-if="state.previewLatency" class="badge bg-light text-dark border">
+                                    Latency: <t t-out="state.previewLatency"/> ms
+                                </span>
+                                <span t-if="state.previewRecords.length > 0" class="badge bg-primary">
+                                    <t t-out="state.previewRecords.length"/> sample rows
+                                </span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-success d-flex align-items-center gap-1"
+                                    t-on-click="() => this.runPreview()"
+                                    t-att-disabled="state.isRunningPreview">
+                                <i t-if="state.isRunningPreview" class="fa fa-spinner fa-spin"/>
+                                <i t-else="" class="fa fa-refresh"/>
+                                <span>Re-run Sample</span>
+                            </button>
+                        </div>
+
+                        <div class="card-body p-0 flex-grow-1 overflow-auto">
+                            <div t-if="state.previewError" class="alert alert-danger m-3">
+                                <i class="fa fa-exclamation-triangle me-1"/>
+                                <b>Extraction Error:</b> <t t-out="state.previewError"/>
+                            </div>
+
+                            <div t-elif="state.previewRecords.length === 0" class="text-center py-5 text-muted">
+                                <i class="fa fa-table fa-3x mb-3 opacity-50"/>
+                                <h5>No preview data loaded yet</h5>
+                                <p>Click <b>"Run Preview"</b> to fetch top sample records from the source connection.</p>
+                            </div>
+
+                            <table t-else="" class="table table-striped table-hover table-sm align-middle mb-0 font-monospace small">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th style="width: 40px;">#</th>
+                                        <t t-foreach="state.previewColumns" t-as="col" t-key="col">
+                                            <th t-out="col"/>
+                                        </t>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="state.previewRecords" t-as="row" t-key="row_index">
+                                        <tr>
+                                            <td class="text-muted" t-out="row_index + 1"/>
+                                            <t t-foreach="state.previewColumns" t-as="col" t-key="col">
+                                                <td class="text-truncate" style="max-width: 250px;" t-out="row[col] !== undefined ? String(row[col]) : ''"/>
+                                            </t>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </t>
+            </div>
+        </div>
+    </t>
+</templates>

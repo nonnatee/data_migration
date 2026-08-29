@@ -8,14 +8,15 @@ This guide provides step-by-step instructions for executing data migrations usin
 1. [Overview & Navigation](#1-overview--navigation)
 2. [Configuring AI Assistants](#2-configuring-ai-assistants)
 3. [Setting Up Data Connections](#3-setting-up-data-connections)
-4. [Building Mapping Templates](#4-building-mapping-templates)
-5. [Using the Interactive Visual Mapper](#5-using-the-interactive-visual-mapper)
-6. [Configuring Transformations & Pipelines](#6-configuring-transformations--pipelines)
-7. [Setting Up Validation Rules & Quality Audits](#7-setting-up-validation-rules--quality-audits)
-8. [Executing Multi-Stage Migration Plans](#8-executing-multi-stage-migration-plans)
-9. [Monitoring, Logs & AI Error Resolution](#9-monitoring-logs--ai-error-resolution)
-10. [End-to-End Tutorial: Migrating Contacts](#10-end-to-end-tutorial-migrating-contacts)
-11. [End-to-End Tutorial: Migrating Products with Variants](#11-end-to-end-tutorial-migrating-products-with-variants)
+4. [Building Extraction Queries with Visual Studio & AI](#4-building-extraction-queries-with-visual-studio--ai)
+5. [Building Mapping Templates](#5-building-mapping-templates)
+6. [Using the Interactive Visual Mapper](#6-using-the-interactive-visual-mapper)
+7. [Configuring Transformations & Pipelines](#7-configuring-transformations--pipelines)
+8. [Setting Up Validation Rules & Quality Audits](#8-setting-up-validation-rules--quality-audits)
+9. [Executing Multi-Stage Migration Plans](#9-executing-multi-stage-migration-plans)
+10. [Monitoring, Logs & AI Error Resolution](#10-monitoring-logs--ai-error-resolution)
+11. [End-to-End Tutorial: Migrating Contacts with Custom Extraction](#11-end-to-end-tutorial-migrating-contacts-with-custom-extraction)
+12. [End-to-End Tutorial: Migrating Products with Variants](#12-end-to-end-tutorial-migrating-products-with-variants)
 
 ---
 
@@ -26,6 +27,7 @@ Access the migration suite from the top-level **Migration Studio** app icon:
 - **ETL Pipeline Setup**:
   - **Migration Plans**: Multi-stage migration projects.
   - **Data Connections**: Source databases, files, APIs, and cloud services.
+  - **Extraction Queries**: Visual query builder, field projection studio, delta watermarks, and AI optimization.
   - **Mapping Templates**: Field-to-field mappings and transformation rules.
   - **Transformation Presets**: Reusable transformation pipeline templates.
   - **AI Assistant Settings**: AI LLM provider credentials and model selection.
@@ -39,13 +41,13 @@ Access the migration suite from the top-level **Migration Studio** app icon:
 
 ## 2. Configuring AI Assistants
 
-The module integrates AI capabilities across auto-mapping, data cleansing, validation rule suggestions, and automated error resolution.
+The module integrates AI capabilities across query building, auto-mapping, data cleansing, validation rule suggestions, and automated error resolution.
 
 1. Navigate to **ETL Pipeline Setup** -> **AI Assistant Settings**.
 2. Click **New** and configure:
    - **Provider**: Select OpenAI, Google Gemini, Anthropic Claude, Local Ollama, or Custom OpenAI-compatible endpoint.
    - **API Key**: Enter your provider API key (not required for Ollama).
-   - **Model Name**: e.g. `gpt-4o`, `gemini-1.5-pro`, `claude-3-5-sonnet-20241022`, or `llama3`.
+   - **Model Name**: e.g. `gpt-4o-mini`, `gemini-1.5-flash`, `claude-3-5-sonnet-20241022`, or `llama3`.
    - **Base URL**: e.g. `http://localhost:11434` for Ollama or `https://api.openai.com/v1`.
    - **Default Provider**: Check to make this the system-wide active AI engine.
 3. Click **Test AI Connection** in the header to confirm connectivity.
@@ -71,7 +73,7 @@ The module integrates AI capabilities across auto-mapping, data cleansing, valid
 
 ### C. SQL Databases (PostgreSQL, MySQL, SQL Server, SQLite, Oracle, ODBC)
 - Configure Host, Port, Database Name, User, and Password.
-- Specify SQL Query (e.g. `SELECT * FROM legacy_customers WHERE active = 1`).
+- Specify default SQL Query (e.g. `SELECT * FROM legacy_customers`).
 
 ### D. REST APIs & GraphQL
 - Specify URL, HTTP Method (GET, POST), and Authentication (Bearer, Basic, API-Key Header, OAuth2).
@@ -85,17 +87,66 @@ The module integrates AI capabilities across auto-mapping, data cleansing, valid
 
 3. Click **Test Connection & Fetch Schema**:
    - Tests response latency (`latency_ms`).
-   - Discovers all column names and data types.
+   - Discovers all column names, tables, and data types.
    - Fetches first 10 rows into the preview tab.
 
 ---
 
-## 4. Building Mapping Templates
+## 4. Building Extraction Queries with Visual Studio & AI
+
+Navigate to **ETL Pipeline Setup** -> **Extraction Queries** -> Click **New**:
+
+```
++-----------------------------------------------------------------------------------------+
+| [Extraction Query Studio]                                  [AI Assistant] [Run Preview] |
+|-----------------------------------------------------------------------------------------|
+| [Field Selection]  [WHERE Filters]  [Sorting]  [SQL Query]  [AI Advisor]  [Data Preview]|
+|-----------------------------------------------------------------------------------------|
+| Tables (Left)     | Table Columns Projection (Center)                                   |
+| - customers       | [x] id        -> Target Alias: cust_id       [Type Cast: integer]   |
+| - invoices        | [x] full_name -> Target Alias: name          [Type Cast: varchar]   |
+| - order_lines     | [x] balance   -> Target Alias: total_due     [Type Cast: float]     |
+|                   | [ ] temp_col  (Unchecked - excluded from extraction)                |
++-----------------------------------------------------------------------------------------+
+```
+
+### A. Visual Field Selection & Projection
+1. Select your **Source Table** from the left panel.
+2. Check the columns you want to extract.
+3. Enter custom **Target Field Aliases** (e.g. `cust_name` -> `name`). These aliases will automatically flow downstream into your Mapping Templates!
+4. Choose **Type Casting** (e.g. `CAST(id AS integer)` or `CAST(write_date AS timestamp)`).
+
+### B. Visual WHERE Filters
+1. Switch to the **WHERE Filters** tab.
+2. Click **Add Filter Condition**:
+   - Choose Field, Operator (`=`, `!=`, `>`, `<`, `LIKE`, `IN`, `IS NOT NULL`).
+   - Enter Value or dynamic parameter `:watermark`.
+   - Select `AND` / `OR` logical conjunction.
+
+### C. Incremental Delta Watermarks
+- Set Extraction Strategy to **Incremental Extraction (Watermark / Delta)**.
+- Set **Watermark Source Column** (e.g. `updated_at` or `write_date`).
+- Each run automatically tracks the highest value and extracts only modified records in subsequent syncs.
+
+### D. AI Extraction Assistant
+Click **AI Assistant** in the top right to access 4 dedicated AI tools:
+1. **Natural Language Query Generator**: Type e.g. *"Extract all active partners modified after 2025 where balance > 0"* -> Generates the visual fields, filters, and SQL automatically.
+2. **Performance & Index Advisor**: Evaluates the query and generates `CREATE INDEX` recommendations to run on your source database for lightning-fast ETL extraction.
+3. **Watermark Advisor**: Inspects columns and sample data to automatically recommend the optimal delta sync column.
+4. **Query Explainer & Data Profiler**: Generates an audit report highlighting null risks and potential timezone discrepancies.
+
+### E. Live Data Preview Sandbox
+Click **Run Preview** to test your query. Inspect the formatted sample data table with real-time latency (ms) reporting before saving.
+
+---
+
+## 5. Building Mapping Templates
 
 1. Navigate to **Mapping Templates** -> Click **New**.
 2. Fill in the header parameters:
    - **Name**: Descriptive title (e.g. `Customers & Contacts Migration`).
-   - **Connection**: Select the connection configured in Step 3.
+   - **Connection**: Select your source connection.
+   - **Extraction Query**: Select the Extraction Query configured in Step 4 (optional; brings in custom projected aliases).
    - **Target Odoo Model**: Select target Odoo model (e.g. `res.partner`).
    - **Operation Mode**:
      - `upsert`: Updates existing record if match key exists; creates new record otherwise.
@@ -108,9 +159,9 @@ The module integrates AI capabilities across auto-mapping, data cleansing, valid
 
 ---
 
-## 5. Using the Interactive Visual Mapper
+## 6. Using the Interactive Visual Mapper
 
-Switch to the **Visual Diagram Mapper** tab on the template form to use the OWL 3 canvas:
+Switch to the **Visual Diagram Mapper** tab on the template form:
 
 ```
 +-------------------+      +-------------------+      +-------------------------+
@@ -131,7 +182,7 @@ Switch to the **Visual Diagram Mapper** tab on the template form to use the OWL 
 
 ---
 
-## 6. Configuring Transformations & Pipelines
+## 7. Configuring Transformations & Pipelines
 
 In the right-hand panel of the Visual Mapper (or in the Mapping Line detail form), you can chain multiple sequential transformation steps:
 
@@ -165,7 +216,7 @@ Extract the 2-letter ISO country code from this freeform address text: {value}
 
 ---
 
-## 7. Setting Up Validation Rules & Quality Audits
+## 8. Setting Up Validation Rules & Quality Audits
 
 Switch to the **Validation Rules** tab on your template:
 
@@ -183,7 +234,7 @@ Switch to the **Validation Rules** tab on your template:
 
 ---
 
-## 8. Executing Multi-Stage Migration Plans
+## 9. Executing Multi-Stage Migration Plans
 
 1. Navigate to **Migration Plans** -> Click **New**.
 2. Structure your Stages and Steps:
@@ -199,7 +250,7 @@ Switch to the **Validation Rules** tab on your template:
 
 ---
 
-## 9. Monitoring, Logs & AI Error Resolution
+## 10. Monitoring, Logs & AI Error Resolution
 
 1. Navigate to **Executions & Audit** -> **Audit Logs**.
 2. Filter by **Errors Only** or **Warnings**.
@@ -213,32 +264,34 @@ Switch to the **Validation Rules** tab on your template:
 
 ---
 
-## 10. End-to-End Tutorial: Migrating Contacts
+## 11. End-to-End Tutorial: Migrating Contacts with Custom Extraction
 
-### Scenario: Migrating `customers.csv` to `res.partner`
+### Scenario: Migrating SQL Server `legacy_customers` to `res.partner`
 
-1. **Create Connection**:
-   - Name: `Legacy Customer CSV`.
-   - Type: `CSV File` -> Upload `customers.csv`.
+1. **Create Data Connection**:
+   - Name: `Legacy SQL Server`.
+   - Type: `Direct SQL Database` -> Select `mssql`, host, port, and credentials.
    - Test Connection.
-2. **Create Template**:
-   - Name: `Customer Partners Template`.
+2. **Build Extraction Query**:
+   - Go to **Extraction Queries** -> New -> Name: `Active Customers Extraction`.
+   - Connection: `Legacy SQL Server`.
+   - Strategy: `Incremental Extraction (Watermark / Delta)` -> Watermark Column: `updated_at`.
+   - In **Visual Query Studio**: Pick `customers` table -> Select `cust_id` (Alias: `ref`), `company_name` (Alias: `name`), `email`, `phone`, `updated_at`.
+   - In **WHERE Filters**: Add `status = 'ACTIVE'`.
+   - Run **Live Preview** -> Verify 10 rows. Save.
+3. **Create Mapping Template**:
+   - Name: `SQL Customers to Odoo Partners`.
+   - Connection: `Legacy SQL Server` -> Extraction Query: `Active Customers Extraction`.
    - Target Model: `Contact (res.partner)`.
-   - Operation Mode: `upsert`.
-3. **Map Fields**:
-   - `customer_id` -> `ref` (Check **Match Key**).
-   - `company_name` -> `name`.
-   - `email_addr` -> `email`.
-   - `phone_no` -> `phone` (Add regex transform `[^\d+]`).
-   - `country` -> `country_id` (Lookup Strategy: `field_search` by `code`).
-4. **Run Simulation**:
-   - Click **Run Migration Job** -> Verify 0 errors in dry-run mode.
-5. **Execute Live**:
-   - Run live job. Inspect newly created partners in **Contacts** app.
+   - Click **AI Auto-Map** in the Visual Mapper tab.
+   - Mark `ref` as **Match Key**.
+4. **Run Simulation & Live Sync**:
+   - Execute Dry-Run Simulation. Verify 0 errors.
+   - Run Live Job -> Inspect records in **Contacts** app. Subsequent runs extract only new/updated contacts!
 
 ---
 
-## 11. End-to-End Tutorial: Migrating Products with Variants
+## 12. End-to-End Tutorial: Migrating Products with Variants
 
 ### Scenario: Migrating `products.xlsx` to `product.template`
 

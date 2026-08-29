@@ -60,7 +60,10 @@ class MigrationTemplate(models.Model):
     def get_available_source_variables(self):
         """Returns list of all available variables (raw source columns + derived output variables)."""
         self.ensure_one()
-        raw_cols = json.loads(self.connection_id.source_columns or '[]')
+        if self.extraction_id:
+            raw_cols = self.extraction_id.get_extraction_columns()
+        else:
+            raw_cols = json.loads(self.connection_id.source_columns or '[]')
         derived_cols = [t.output_field for t in self.transform_line_ids if t.output_field]
         all_vars = list(dict.fromkeys(raw_cols + derived_cols))
         return all_vars

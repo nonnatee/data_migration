@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Extraction List View -->
+    <record id="view_migration_extraction_list" model="ir.ui.view">
+        <field name="name">migration.extraction.list</field>
+        <field name="model">migration.extraction</field>
+        <field name="arch" type="xml">
+            <list string="Extraction Queries">
+                <field name="name"/>
+                <field name="connection_id"/>
+                <field name="conn_type"/>
+                <field name="extraction_type" widget="badge"
+                       decoration-info="extraction_type == 'full'"
+                       decoration-success="extraction_type == 'incremental_watermark'"
+                       decoration-warning="extraction_type == 'custom_query'"/>
+                <field name="watermark_column"/>
+                <field name="last_watermark_value"/>
+                <field name="last_extracted_count"/>
+                <field name="latency_ms" string="Latency (ms)"/>
+                <field name="last_run_time"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Extraction Search View -->
+    <record id="view_migration_extraction_search" model="ir.ui.view">
+        <field name="name">migration.extraction.search</field>
+        <field name="model">migration.extraction</field>
+        <field name="arch" type="xml">
+            <search string="Search Extractions">
+                <field name="name"/>
+                <field name="connection_id"/>
+                <field name="watermark_column"/>
+                <filter string="Incremental Watermark" name="filter_incremental" domain="[('extraction_type', '=', 'incremental_watermark')]"/>
+                <filter string="Full Extraction" name="filter_full" domain="[('extraction_type', '=', 'full')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Connection" name="group_by_connection" context="{'group_by': 'connection_id'}"/>
+                    <filter string="Strategy" name="group_by_strategy" context="{'group_by': 'extraction_type'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Extraction Form View -->
+    <record id="view_migration_extraction_form" model="ir.ui.view">
+        <field name="name">migration.extraction.form</field>
+        <field name="model">migration.extraction</field>
+        <field name="arch" type="xml">
+            <form string="Data Extraction Configuration">
+                <header>
+                    <button name="action_test_extraction" type="object" string="Test Extraction Sample" class="btn-primary" icon="fa-play"/>
+                    <button name="action_ai_optimize_query" type="object" string="AI Optimize Query" class="btn-secondary" icon="fa-magic"/>
+                    <button name="action_ai_advise_watermark" type="object" string="AI Advise Watermark" class="btn-secondary" icon="fa-lightbulb-o"/>
+                    <button name="action_reset_watermark" type="object" string="Reset Watermark" class="btn-secondary" icon="fa-refresh"
+                            invisible="extraction_type != 'incremental_watermark'"
+                            confirm="Are you sure you want to reset the watermark? Next extraction will process all source records from the beginning."/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Sales Invoices Delta Extraction"/>
+                        </h1>
+                    </div>
+
+                    <group>
+                        <group string="Connection &amp; Strategy">
+                            <field name="connection_id"/>
+                            <field name="conn_type"/>
+                            <field name="extraction_type"/>
+                        </group>
+                        <group string="Incremental Delta Watermark" invisible="extraction_type != 'incremental_watermark'">
+                            <field name="watermark_column" required="extraction_type == 'incremental_watermark'"/>
+                            <field name="watermark_datatype"/>
+                            <field name="last_watermark_value" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <!-- Visual Studio Tab -->
+                        <page string="Visual Query Studio" name="visual_studio">
+                            <widget name="visual_extraction_builder"/>
+                        </page>
+
+                        <!-- Execution & Advanced Settings -->
+                        <page string="Advanced Settings" name="advanced_settings">
+                            <group>
+                                <group string="Batching &amp; Limits">
+                                    <field name="chunk_size"/>
+                                    <field name="max_records_limit"/>
+                                    <field name="use_visual_builder"/>
+                                </group>
+                                <group string="Runtime Statistics">
+                                    <field name="last_run_time" readonly="1"/>
+                                    <field name="last_extracted_count" readonly="1"/>
+                                    <field name="latency_ms" readonly="1"/>
+                                </group>
+                            </group>
+                            <group string="Compiled Query String">
+                                <field name="compiled_query" widget="ace" options="{'mode': 'sql'}" readonly="1"/>
+                                <field name="custom_query" widget="ace" options="{'mode': 'sql'}" invisible="use_visual_builder"/>
+                            </group>
+                        </page>
+
+                        <!-- AI Advisory & Profiling -->
+                        <page string="AI Advisory &amp; Optimization Notes" name="ai_notes" invisible="not ai_optimization_notes and not ai_explanation">
+                            <group string="Performance Tuning &amp; Index Advisor" invisible="not ai_optimization_notes">
+                                <field name="ai_optimization_notes" nolabel="1" readonly="1"/>
+                            </group>
+                            <group string="Query Audit &amp; Data Risk Profile" invisible="not ai_explanation">
+                                <field name="ai_explanation" nolabel="1" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action Definition -->
+    <record id="action_migration_extraction" model="ir.actions.act_window">
+        <field name="name">Extraction Queries</field>
+        <field name="res_model">migration.extraction</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_migration_extraction_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configure your first visual extraction query
+            </p>
+            <p>
+                Visually pick fields, build filter conditions, configure delta watermarks, and leverage AI optimization for high-speed ETL extraction.
+            </p>
+        </field>
+    </record>
+</odoo>

@@ -14,6 +14,7 @@ sequenceDiagram
     participant Plan as migration.plan
     participant Step as migration.plan.step
     participant Job as migration.job
+    participant Ext as migration.extraction
     participant Conn as migration.connection
     participant Transform as migration.mapping.transform
     participant Val as migration.validation.rule
@@ -26,8 +27,16 @@ sequenceDiagram
     loop For each Stage & Step
         Plan->>Step: _execute_step()
         Step->>Job: _execute_job()
-        Job->>Conn: _fetch_raw_records() / Extraction Query
-        Conn-->>Job: Return Raw Rows + Column Metadata
+        alt Extraction Query Configured
+            Job->>Ext: execute_extraction(limit)
+            Ext->>Ext: _validate_query_safety() + Bind :watermark
+            Ext->>Conn: _fetch_raw_records()
+            Conn-->>Ext: Raw Rows + Columns
+            Ext-->>Job: Return Transformed Extraction Batch
+        else Default Connection Query
+            Job->>Conn: _fetch_raw_records()
+            Conn-->>Job: Return Raw Rows + Column Metadata
+        end
 
         loop For each Row (1 to N)
             Job->>DB: Open Savepoint (cr.savepoint())
@@ -68,7 +77,51 @@ sequenceDiagram
 
 ---
 
-## 2. Zero-Failure Savepoint Isolation
+## 2. Visual Extraction & Query Studio Architecture
+
+The **Extraction Studio** operates as a smart intermediary layer between the raw source data connection and downstream mapping templates:
+
+```mermaid
+flowchart LR
+    subgraph Discovery["1. Schema Discovery"]
+        CONN["migration.connection"] -->|"inspect_source_schema()"| SCH["Tables, Columns & Types"]
+    end
+
+    subgraph Studio["2. Visual Extraction Studio (OWL 3)"]
+        SCH --> V1["Table Explorer"]
+        SCH --> V2["Column Selector & Aliasing"]
+        V2 --> V3["WHERE Filter Builder"]
+        V3 --> V4["ORDER BY Sorting"]
+        AI["AI Extraction Assistants"] -->|"NL Query Generation"| V2
+        AI -->|"Performance & Index Advisor"| V3
+        AI -->|"Watermark Advisor"| WM["Watermark State"]
+    end
+
+    subgraph Compilation["3. Query Compilation & Safety"]
+        V2 & V3 & V4 --> COMP["compile_query_from_visual()"]
+        COMP --> SAFE["_validate_query_safety()"]
+        SAFE -->|"Blocks DROP/DELETE/UPDATE"| EXE["execute_extraction()"]
+    end
+
+    subgraph Downstream["4. Downstream Synchronization"]
+        V2 -->|"get_extraction_columns()"| TMPL["migration.template"]
+        EXE -->|"Sample Records (Limit N)"| PREV["Live Sandbox Table"]
+    end
+```
+
+### Key Technical Properties:
+1. **Multi-Dialect Catalog Introspection**:
+   - `inspect_source_schema()` queries the system catalog (`information_schema.tables`, `information_schema.columns` for Postgres/MySQL, `sqlite_master` / `PRAGMA table_info` for SQLite) or inspects file headers to provide structured table/view and column schemas to the UI.
+2. **Deterministic SQL Compiler**:
+   - Compiles selected field projections, aliases (`col AS alias`), type casts (`CAST(col AS type)`), WHERE clauses, and sorting into standard ANSI SQL.
+3. **Strict Server-Side Read-Only Guard**:
+   - Before any query is executed against the source database, `_validate_query_safety()` checks for forbidden DDL/DML keywords (`DROP`, `DELETE`, `UPDATE`, `INSERT`, `TRUNCATE`, `ALTER`, `CREATE`, `GRANT`, `REVOKE`, `EXEC`, `SHUTDOWN`).
+4. **Dynamic Downstream Field Projection**:
+   - When a `migration.template` is linked to an extraction query, `get_available_source_variables()` uses `extraction_id.get_extraction_columns()`, ensuring that any aliases defined in the extraction query are immediately available for transformation pipelines and target field mapping.
+
+---
+
+## 3. Zero-Failure Savepoint Isolation
 
 One of the biggest pain points in enterprise data migration is when a single malformed row in a 50,000-row file crashes the entire transaction, rolling back thousands of previously processed records.
 
@@ -84,7 +137,7 @@ One of the biggest pain points in enterprise data migration is when a single mal
 
 ---
 
-## 3. MD5 Checksum Change Detection
+## 4. MD5 Checksum Change Detection
 
 To support efficient incremental migrations and recurring synchronizations, the module uses MD5 checksumming:
 
@@ -97,7 +150,7 @@ $$\text{Checksum} = \text{MD5}\left(\text{json.dumps}(row\_data, \text{sort\_key
 
 ---
 
-## 4. Incremental Watermark Delta Extraction
+## 5. Incremental Watermark Delta Extraction
 
 For high-volume SQL databases and API integrations, full table scans are inefficient.
 
@@ -105,11 +158,12 @@ For high-volume SQL databases and API integrations, full table scans are ineffic
 2. When executing the extraction query:
    - The query binds `:watermark` -> `WHERE updated_at > :watermark`.
    - The extractor tracks the maximum watermark value across all extracted rows.
-3. Upon successful job completion, `last_watermark_value` is updated atomically.
+3. For non-SQL sources (CSV, Excel, REST APIs), the engine performs high-performance in-memory delta comparison based on `watermark_datatype` (`datetime`, `date`, `integer`).
+4. Upon successful job completion, `last_watermark_value` is updated atomically.
 
 ---
 
-## 5. Relational Resolution Strategy Hierarchy
+## 6. Relational Resolution Strategy Hierarchy
 
 When mapping relational fields (`Many2one`, `Many2many`, `One2many`), the engine evaluates lookup strategies in the following prioritized order:
 
@@ -131,7 +185,7 @@ flowchart TD
 
 ---
 
-## 6. AI Integration & Fault Tolerance
+## 7. AI Integration & Fault Tolerance
 
 The AI subsystem (`migration.ai.config`) is designed with resilience:
 - **Zero Third-Party Dependencies**: Native implementation using Python's standard `urllib.request` and `ssl` modules.
