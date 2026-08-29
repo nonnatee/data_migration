@@ -165,6 +165,61 @@ export class VisualExtractionBuilder extends Component {
     }
 
     // ------------------------------------------------------------
+    // GETTERS & COMPUTED PROPERTIES
+    // ------------------------------------------------------------
+
+    get filteredTables() {
+        if (!this.state.tableSearch) {
+            return this.state.tables;
+        }
+        const q = this.state.tableSearch.toLowerCase();
+        return this.state.tables.filter((t) => t.name.toLowerCase().includes(q));
+    }
+
+    get filteredSelectedFields() {
+        if (!this.state.fieldSearch) {
+            return this.state.selectedFields;
+        }
+        const q = this.state.fieldSearch.toLowerCase();
+        return this.state.selectedFields.filter(
+            (f) => f.field.toLowerCase().includes(q) || (f.alias && f.alias.toLowerCase().includes(q))
+        );
+    }
+
+    get selectedFieldsCount() {
+        return this.state.selectedFields.filter((f) => f.selected).length;
+    }
+
+    // ------------------------------------------------------------
+    // NAVIGATION & UI HANDLERS
+    // ------------------------------------------------------------
+
+    setTab(tabName) {
+        this.state.activeTab = tabName;
+    }
+
+    openAiAssistant(subTab = "generate") {
+        this.state.activeTab = "ai";
+        this.state.aiTab = subTab;
+    }
+
+    setAiTab(aiTabName) {
+        this.state.aiTab = aiTabName;
+    }
+
+    onToggleVisualBuilder(ev) {
+        this.state.useVisualBuilder = ev.target.checked;
+        this.recomputeCompiledQuery();
+    }
+
+    onCustomQueryChange(ev) {
+        if (!this.state.useVisualBuilder) {
+            this.state.customQuery = ev.target.value;
+            this.recomputeCompiledQuery();
+        }
+    }
+
+    // ------------------------------------------------------------
     // TABLE & FIELD ACTIONS
     // ------------------------------------------------------------
 

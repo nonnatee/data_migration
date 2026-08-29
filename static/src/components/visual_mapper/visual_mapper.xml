@@ -87,13 +87,40 @@
 
                 <!-- Center Panel: Transformation Pipeline -->
                 <div class="d-flex flex-column flex-grow-1 border-end overflow-auto bg-white p-3">
-                    <div class="d-flex align-items-center justify-content-between mb-3">
-                        <h6 class="fw-bold mb-0 text-dark">
-                            <i class="fa fa-list-ol me-2 text-primary"/>Transformation Pipeline Rules (<t t-out="state.transformations.length"/>)
-                        </h6>
-                        <div class="d-flex gap-2">
-                            <select class="form-select form-select-sm" t-model="state.selectedPresetId" t-on-change="applyTransformPreset" style="width: 220px;">
-                                <option value="">Apply Preset Template...</option>
+                    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <h6 class="fw-bold mb-0 text-dark">
+                                <i class="fa fa-list-ol me-2 text-primary"/>Transformation Pipeline (<t t-out="state.transformations.length"/>)
+                            </h6>
+                            <button class="btn btn-sm btn-primary py-1 px-2" t-on-click="addNewTransformation">
+                                <i class="fa fa-plus me-1"/> Add Rule
+                            </button>
+                        </div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <!-- Filter by variable name -->
+                            <div class="input-group input-group-sm" style="width: 170px;">
+                                <span class="input-group-text"><i class="fa fa-search"/></span>
+                                <input type="text" class="form-control" placeholder="Search rules..." t-model="state.transformSearch"/>
+                            </div>
+                            <!-- Filter by category -->
+                            <select class="form-select form-select-sm" t-model="state.transformCategoryFilter" style="width: 150px;">
+                                <option value="">All Categories</option>
+                                <option value="cleansing">Cleansing</option>
+                                <option value="filter_row">Row Filter</option>
+                                <option value="date_format">Date Format</option>
+                                <option value="unit_conversion">Unit Conv</option>
+                                <option value="type_conversion">Type Cast</option>
+                                <option value="value_map">Value Map</option>
+                                <option value="math_expr">Math</option>
+                                <option value="string_slice">Slice / Split</option>
+                                <option value="slugify">Slugify</option>
+                                <option value="case_when">Case-When</option>
+                                <option value="python_expr">Python</option>
+                                <option value="ai_prompt">AI Prompt</option>
+                            </select>
+                            <!-- Presets -->
+                            <select class="form-select form-select-sm" t-model="state.selectedPresetId" t-on-change="applyTransformPreset" style="width: 180px;">
+                                <option value="">Apply Preset...</option>
                                 <t t-foreach="state.transformPresets" t-as="p" t-key="p.id">
                                     <option t-att-value="p.id"><t t-out="p.name"/></option>
                                 </t>
@@ -101,17 +128,17 @@
                         </div>
                     </div>
 
-                    <t t-if="state.transformations.length == 0">
+                    <t t-if="filteredTransformations.length == 0">
                         <div class="alert alert-info d-flex align-items-center my-4">
                             <i class="fa fa-info-circle fs-4 me-3"/>
                             <div>
-                                <strong>No transformations defined.</strong>
-                                <p class="mb-0 fs-7">Raw extraction columns will pass directly into the Mapping Stage. Click a column on the left or 'Add Rule' to add cleansing, math, unit conversions, or AI prompts.</p>
+                                <strong>No matching transformations.</strong>
+                                <p class="mb-0 fs-7">No transformation rules match your current filter query. Click '+ Add Rule' or select a raw column on the left.</p>
                             </div>
                         </div>
                     </t>
 
-                    <t t-foreach="state.transformations" t-as="t" t-key="t_index">
+                    <t t-foreach="filteredTransformations" t-as="t" t-key="t_index">
                         <div t-attf-class="card mb-3 border shadow-sm #{state.selectedTransformIndex == t_index ? 'border-primary' : ''}">
                             <div class="card-header bg-light py-2 d-flex align-items-center justify-content-between">
                                 <div class="d-flex align-items-center gap-2">
@@ -119,7 +146,10 @@
                                     <strong class="text-primary"><t t-out="t.source_field"/></strong>
                                     <i class="fa fa-arrow-right text-muted fs-7"/>
                                     <strong class="text-success"><t t-out="t.output_field || t.source_field"/></strong>
-                                    <span class="badge bg-info text-dark ms-2"><t t-out="t.transform_category"/></span>
+                                    <span class="badge bg-info text-dark ms-1"><t t-out="t.transform_category"/></span>
+                                    <span t-if="t.apply_filter" class="badge bg-warning text-dark ms-1" title="Conditional Filter Active">
+                                        <i class="fa fa-filter me-1"/>Filtered
+                                    </span>
                                 </div>
                                 <div class="d-flex gap-1">
                                     <button class="btn btn-xs btn-outline-secondary" t-on-click="() => this.moveTransform(t_index, -1)" t-att-disabled="t_index == 0" title="Move Up">
@@ -148,6 +178,7 @@
                                         <label class="form-label fs-7 fw-bold mb-1">Category</label>
                                         <select class="form-select form-select-sm" t-model="t.transform_category">
                                             <option value="cleansing">Data Cleansing</option>
+                                            <option value="filter_row">Filter / Drop Records</option>
                                             <option value="date_format">Date Formatting</option>
                                             <option value="unit_conversion">Unit Conversion</option>
                                             <option value="type_conversion">Type Casting</option>
@@ -195,6 +226,42 @@
                                                 <div class="col-md-4"><input type="text" class="form-control form-control-sm" placeholder="Regex Pattern" t-model="t.regex_pattern"/></div>
                                                 <div class="col-md-4"><input type="text" class="form-control form-control-sm" placeholder="Replacement" t-model="t.regex_replace"/></div>
                                             </t>
+                                            <t t-if="t.cleansing_type == 'pad_left' or t.cleansing_type == 'pad_right'">
+                                                <div class="col-md-4"><input type="text" class="form-control form-control-sm" placeholder="Pad Char (e.g. 0)" t-model="t.pad_char"/></div>
+                                                <div class="col-md-4"><input type="number" class="form-control form-control-sm" placeholder="Length" t-model="t.pad_count"/></div>
+                                            </t>
+                                        </div>
+
+                                        <!-- Row Filter Category -->
+                                        <div t-if="t.transform_category == 'filter_row'" class="row g-2 align-items-center">
+                                            <div class="col-md-3">
+                                                <select class="form-select form-select-sm" t-model="t.filter_action">
+                                                    <option value="keep_if">Keep If Met</option>
+                                                    <option value="drop_if">Drop If Met</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <input type="text" class="form-control form-control-sm" placeholder="Field (defaults to source)" t-model="t.filter_field"/>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <select class="form-select form-select-sm" t-model="t.filter_operator">
+                                                    <option value="=">Equals (=)</option>
+                                                    <option value="!=">Not Equals (!=)</option>
+                                                    <option value="&gt;">Greater Than (&gt;)</option>
+                                                    <option value="&lt;">Less Than (&lt;)</option>
+                                                    <option value="&gt;=">Greater or Equal (&gt;=)</option>
+                                                    <option value="&lt;=">Less or Equal (&lt;=)</option>
+                                                    <option value="contains">Contains</option>
+                                                    <option value="not_contains">Does Not Contain</option>
+                                                    <option value="is_null">Is Null / Empty</option>
+                                                    <option value="is_not_null">Is Not Null</option>
+                                                    <option value="in">In Set (A, B, C)</option>
+                                                    <option value="regex">Regex</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <input type="text" class="form-control form-control-sm" placeholder="Target Value / Pattern" t-model="t.filter_value"/>
+                                            </div>
                                         </div>
 
                                         <!-- Unit Conversion -->
@@ -205,13 +272,35 @@
                                                     <option value="length">Length (m, km, ft, in)</option>
                                                     <option value="volume">Volume (l, ml, gal)</option>
                                                     <option value="temp">Temperature (C, F, K)</option>
+                                                    <option value="custom">Custom Scale Multiplier</option>
                                                 </select>
                                             </div>
-                                            <div class="col-md-4">
+                                            <div class="col-md-4" t-if="t.unit_type != 'custom'">
                                                 <input type="text" class="form-control form-control-sm" placeholder="Source Unit (e.g. lb)" t-model="t.source_unit"/>
                                             </div>
-                                            <div class="col-md-4">
+                                            <div class="col-md-4" t-if="t.unit_type != 'custom'">
                                                 <input type="text" class="form-control form-control-sm" placeholder="Target Unit (e.g. kg)" t-model="t.target_unit"/>
+                                            </div>
+                                            <div class="col-md-4" t-if="t.unit_type == 'custom'">
+                                                <input type="number" step="any" class="form-control form-control-sm" placeholder="Scale Multiplier Ratio" t-model="t.custom_scale_ratio"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Type Conversion -->
+                                        <div t-if="t.transform_category == 'type_conversion'" class="row g-2 align-items-center">
+                                            <div class="col-md-6">
+                                                <select class="form-select form-select-sm" t-model="t.target_type">
+                                                    <option value="string">String / Text</option>
+                                                    <option value="integer">Integer Number</option>
+                                                    <option value="float">Float / Decimal</option>
+                                                    <option value="boolean">Boolean (True / False)</option>
+                                                    <option value="date">Date Object</option>
+                                                    <option value="datetime">Datetime Timestamp</option>
+                                                    <option value="json_parse">Parse JSON</option>
+                                                    <option value="json_dump">Dump to JSON</option>
+                                                    <option value="base64_encode">Base64 Encode</option>
+                                                    <option value="base64_decode">Base64 Decode</option>
+                                                </select>
                                             </div>
                                         </div>
 
@@ -223,11 +312,13 @@
                                                     <option value="subtract">Subtract (-)</option>
                                                     <option value="multiply">Multiply (*)</option>
                                                     <option value="divide">Divide (/)</option>
-                                                    <option value="round">Round</option>
+                                                    <option value="round">Round to Decimal Digits</option>
                                                     <option value="percentage">Percentage (%)</option>
+                                                    <option value="abs">Absolute Value</option>
+                                                    <option value="modulo">Modulo (%)</option>
                                                 </select>
                                             </div>
-                                            <div class="col-md-4">
+                                            <div class="col-md-4" t-if="t.math_op != 'round' and t.math_op != 'abs'">
                                                 <input type="number" step="any" class="form-control form-control-sm" placeholder="Operand Value" t-model="t.math_operand"/>
                                             </div>
                                         </div>
@@ -236,6 +327,21 @@
                                         <div t-if="t.transform_category == 'date_format'" class="row g-2 align-items-center">
                                             <div class="col-md-6"><input type="text" class="form-control form-control-sm" placeholder="Input Date Pattern (%Y-%m-%d)" t-model="t.input_date_format"/></div>
                                             <div class="col-md-6"><input type="text" class="form-control form-control-sm" placeholder="Output Date Pattern (%Y-%m-%d)" t-model="t.output_date_format"/></div>
+                                        </div>
+
+                                        <!-- String Slice / Split -->
+                                        <div t-if="t.transform_category == 'string_slice'" class="row g-2 align-items-center">
+                                            <div class="col-md-4">
+                                                <select class="form-select form-select-sm" t-model="t.slice_mode">
+                                                    <option value="slice">Slice (Start..End)</option>
+                                                    <option value="left">Left N Chars</option>
+                                                    <option value="right">Right N Chars</option>
+                                                    <option value="split">Split by Delimiter</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4" t-if="t.slice_mode == 'split'">
+                                                <input type="text" class="form-control form-control-sm" placeholder="Delimiter (e.g. -)" t-model="t.split_delimiter"/>
+                                            </div>
                                         </div>
 
                                         <!-- AI Prompt -->
@@ -249,6 +355,56 @@
                                         <div t-if="t.transform_category == 'python_expr'" class="row g-2">
                                             <div class="col-12">
                                                 <input type="text" class="form-control form-control-sm font-monospace" placeholder="Python expr: value.strip().lower() if value else ''" t-model="t.python_code"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Conditional Filter Option Toggle for standard transforms -->
+                                        <div t-if="t.transform_category != 'filter_row'" class="col-12 mt-2 pt-2 border-top">
+                                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                                <div class="form-check form-switch mb-0">
+                                                    <input class="form-check-input" type="checkbox" t-model="t.apply_filter" t-att-id="'apply_filter_' + t_index"/>
+                                                    <label class="form-check-label fs-7 fw-bold" t-att-for="'apply_filter_' + t_index">
+                                                        <i class="fa fa-filter me-1 text-warning"/> Conditional Execution Filter
+                                                    </label>
+                                                </div>
+                                                <small class="text-muted fs-8">Only apply if record matches condition</small>
+                                            </div>
+                                            <div t-if="t.apply_filter" class="row g-2 align-items-center mt-1 bg-light p-2 rounded">
+                                                <div class="col-md-4">
+                                                    <input type="text" class="form-control form-control-sm" placeholder="Field to test (defaults to source)" t-model="t.filter_field"/>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <select class="form-select form-select-sm" t-model="t.filter_operator">
+                                                        <option value="=">Equals (=)</option>
+                                                        <option value="!=">Not Equals (!=)</option>
+                                                        <option value="&gt;">Greater Than (&gt;)</option>
+                                                        <option value="&lt;">Less Than (&lt;)</option>
+                                                        <option value="&gt;=">Greater or Equal (&gt;=)</option>
+                                                        <option value="&lt;=">Less or Equal (&lt;=)</option>
+                                                        <option value="contains">Contains</option>
+                                                        <option value="not_contains">Does Not Contain</option>
+                                                        <option value="is_null">Is Null / Empty</option>
+                                                        <option value="is_not_null">Is Not Null</option>
+                                                        <option value="in">In Set (A, B, C)</option>
+                                                        <option value="regex">Regex</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <input type="text" class="form-control form-control-sm" placeholder="Filter Target Value" t-model="t.filter_value"/>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Dynamic Example & Hint Callout -->
+                                        <div class="col-12 mt-2">
+                                            <div class="p-2 rounded bg-light border-start border-warning border-3 d-flex align-items-center justify-content-between">
+                                                <div class="d-flex align-items-center text-truncate me-2">
+                                                    <i class="fa fa-lightbulb-o text-warning me-2 fs-6 flex-shrink-0"/>
+                                                    <small class="text-muted"><strong class="text-dark">Example: </strong><t t-out="getTransformHint(t)"/></small>
+                                                </div>
+                                                <button class="btn btn-xs btn-outline-warning text-dark flex-shrink-0" t-on-click="() => this.loadExampleToSandbox(t)" title="Load sample input into test sandbox">
+                                                    <i class="fa fa-flask me-1"/>Try in Sandbox
+                                                </button>
                                             </div>
                                         </div>
                                     </div>

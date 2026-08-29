@@ -109,3 +109,31 @@ class TestDataTransformationTemplate(common.TransactionCase):
 
         res_id = rel_line.resolve_value({'parent_name': 'Parent Company Inc'})
         self.assertEqual(res_id, parent_partner.id)
+
+    def test_preset_with_filter_step(self):
+        """Verify that presets can include row filter steps and copy them to templates."""
+        preset = self.env['migration.transform.template'].create({
+            'name': 'Filter Active & Trim',
+            'category': 'cleansing',
+        })
+        self.env['migration.transform.template.step'].create({
+            'template_id': preset.id,
+            'sequence': 10,
+            'transform_category': 'filter_row',
+            'filter_action': 'keep_if',
+            'filter_operator': '=',
+            'filter_value': 'true',
+        })
+        self.env['migration.transform.template.step'].create({
+            'template_id': preset.id,
+            'sequence': 20,
+            'transform_category': 'cleansing',
+            'cleansing_type': 'trim',
+        })
+
+        lines = preset.action_apply_to_template(self.template, 'code', 'clean_code')
+        self.assertEqual(len(lines), 2)
+        filter_line = lines.filtered(lambda l: l.transform_category == 'filter_row')
+        self.assertTrue(filter_line)
+        self.assertEqual(filter_line.filter_operator, '=')
+        self.assertEqual(filter_line.filter_value, 'true')

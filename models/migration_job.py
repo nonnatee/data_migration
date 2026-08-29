@@ -243,19 +243,35 @@ class MigrationJob(models.Model):
                         })
 
             except UserError as ue:
-                error_cnt += 1
-                _logger.warning("User error migrating row %s (key=%s): %s", row_index, source_key, ue)
-                self.env['migration.log'].create({
-                    'job_id': self.id,
-                    'stage_name': stage_name or 'Loading',
-                    'step_name': step_name or self.name,
-                    'row_number': row_index,
-                    'source_key': source_key,
-                    'log_type': 'error',
-                    'message': str(ue),
-                    'error_traceback': traceback.format_exc(),
-                    'raw_data': json.dumps(row, default=str),
-                })
+                err_str = str(ue)
+                if err_str in ('__DROP_ROW_NULL__', '__DROP_ROW_FILTER__') or err_str.startswith('__DROP_ROW'):
+                    skipped_cnt += 1
+                    self.env['migration.log'].create({
+                        'job_id': self.id,
+                        'stage_name': stage_name or 'Transformation',
+                        'step_name': step_name or self.name,
+                        'row_number': row_index,
+                        'source_key': source_key,
+                        'log_type': 'info',
+                        'message': _("Record skipped by transformation filter rule (%s).") % (
+                            "Null Check" if "NULL" in err_str else "Condition Filter"
+                        ),
+                        'raw_data': json.dumps(row, default=str),
+                    })
+                else:
+                    error_cnt += 1
+                    _logger.warning("User error migrating row %s (key=%s): %s", row_index, source_key, ue)
+                    self.env['migration.log'].create({
+                        'job_id': self.id,
+                        'stage_name': stage_name or 'Loading',
+                        'step_name': step_name or self.name,
+                        'row_number': row_index,
+                        'source_key': source_key,
+                        'log_type': 'error',
+                        'message': str(ue),
+                        'error_traceback': traceback.format_exc(),
+                        'raw_data': json.dumps(row, default=str),
+                    })
             except Exception as err:
                 error_cnt += 1
                 error_trace = traceback.format_exc()

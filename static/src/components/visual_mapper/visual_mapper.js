@@ -39,6 +39,8 @@ export class VisualMapperWidget extends Component {
             // Filter queries
             sourceSearch: "",
             targetSearch: "",
+            transformSearch: "",
+            transformCategoryFilter: "",
 
             // Selection
             selectedSourceCol: null,
@@ -164,6 +166,137 @@ export class VisualMapperWidget extends Component {
         return fields.filter(f => (f.name && f.name.toLowerCase().includes(q)) || (f.field_description && f.field_description.toLowerCase().includes(q)));
     }
 
+    get filteredTransformations() {
+        let transforms = this.state.transformations || [];
+        if (this.state.transformCategoryFilter) {
+            transforms = transforms.filter(t => t.transform_category === this.state.transformCategoryFilter);
+        }
+        if (this.state.transformSearch) {
+            const q = this.state.transformSearch.toLowerCase();
+            transforms = transforms.filter(t =>
+                (t.source_field && t.source_field.toLowerCase().includes(q)) ||
+                (t.output_field && t.output_field.toLowerCase().includes(q)) ||
+                (t.transform_category && t.transform_category.toLowerCase().includes(q)) ||
+                (t.cleansing_type && t.cleansing_type.toLowerCase().includes(q))
+            );
+        }
+        return transforms;
+    }
+
+    getTransformHint(t) {
+        if (!t) return "Cleanses and transforms input variable.";
+        const cat = t.transform_category || "cleansing";
+        if (cat === "cleansing") {
+            const hints = {
+                trim: '"John Doe   " ➔ "John Doe" (Removes leading & trailing whitespace)',
+                upper: '"acme corp" ➔ "ACME CORP" (Converts all characters to uppercase)',
+                lower: '"User@Company.COM" ➔ "user@company.com" (Standardizes email/text to lowercase)',
+                title: '"john doe jr" ➔ "John Doe Jr" (Capitalizes first letter of each word)',
+                capitalize: '"pending review" ➔ "Pending review" (Capitalizes first letter only)',
+                pad_left: '"42" (pad="0", len=6) ➔ "000042" (Fixed-width invoice / customer codes)',
+                pad_right: '"SKU" (pad="_", len=8) ➔ "SKU_____" (Appends padding to target length)',
+                regex: 'Pattern: r"[^\\d+]" Repl: "" ➔ "(555) 123-4567" becomes "5551234567"',
+                regex_extract: 'Pattern: r"INV-(\\d+)" Group: 1 ➔ Extracts "1002" from "INV-1002-2026"',
+                strip_html: '"<p><b>Hello</b> World</p>" ➔ "Hello World" (Strips HTML tags & decodes entities)',
+                strip_non_numeric: '"$1,250.75 USD" ➔ "1250.75" (Keeps only digits and decimal point)',
+                strip_non_alphanumeric: '"AB#12-34_XY!" ➔ "AB1234XY" (Strips punctuation & symbols)',
+                handle_null: 'Empty or None ➔ Default fallback value (e.g. "N/A" or "0")',
+                drop_if_null: 'Empty or None ➔ Drops / skips entire record from ETL load',
+            };
+            return hints[t.cleansing_type] || "Data cleansing and sanitization.";
+        } else if (cat === "filter_row") {
+            if (t.filter_action === "keep_if") {
+                return 'Keep record ONLY if condition matches (e.g. status == "active" or amount > 0); drop otherwise.';
+            } else {
+                return 'Drop / skip record if condition matches (e.g. is_deleted == "1" or country == "TEST"); keep otherwise.';
+            }
+        } else if (cat === "date_format") {
+            return '"25/12/2025" (Input: "%d/%m/%Y", Output: "%Y-%m-%d") ➔ "2025-12-25". Supports tz offset & day offsets.';
+        } else if (cat === "unit_conversion") {
+            if (t.unit_type === "mass") return `Mass conversion (${t.source_unit || "lb"} ➔ ${t.target_unit || "kg"}): e.g. 100 lb ➔ ~45.36 kg`;
+            if (t.unit_type === "length") return `Length conversion (${t.source_unit || "in"} ➔ ${t.target_unit || "cm"}): e.g. 10 in ➔ 25.4 cm`;
+            if (t.unit_type === "volume") return `Volume conversion (${t.source_unit || "gal"} ➔ ${t.target_unit || "l"}): e.g. 5 gal ➔ ~18.93 l`;
+            if (t.unit_type === "temp") return `Temperature conversion (${t.source_unit || "F"} ➔ ${t.target_unit || "C"}): e.g. 98.6 °F ➔ 37.0 °C`;
+            return "Multiplier ratio: Value * Scale Ratio (e.g. 100 * 1.07 = 107.0 for VAT/markup)";
+        } else if (cat === "type_conversion") {
+            const hints = {
+                string: '123 ➔ "123" (Casts number/object to text string)',
+                integer: '"123.45" ➔ 123 (Casts to integer whole number)',
+                float: '"$1250.50" ➔ 1250.50 (Casts to floating point decimal)',
+                boolean: '"yes", "1", "true", "active" ➔ True; others ➔ False',
+                date: '"2026-08-29 15:30:00" ➔ "2026-08-29" (Extracts ISO date portion)',
+                datetime: '"2026-08-29" ➔ "2026-08-29 00:00:00" (Expands date to timestamp)',
+                json_parse: '\'{"key": "val"}\' ➔ Python dictionary object',
+                json_dump: 'Dictionary / List ➔ JSON string representation',
+                base64_encode: '"hello" ➔ "aGVsbG8=" (Encodes text/binary for attachments)',
+                base64_decode: '"aGVsbG8=" ➔ "hello" (Decodes base64 string back to text)',
+            };
+            return hints[t.target_type] || "Casts variable to target data type.";
+        } else if (cat === "value_map") {
+            return 'JSON: {"M": "Male", "F": "Female", "O": "Other"} ➔ Translates legacy codes to standard values.';
+        } else if (cat === "math_expr") {
+            const hints = {
+                add: "value + operand (e.g. 100 + 15 = 115)",
+                subtract: "value - operand (e.g. 100 - 20 = 80)",
+                multiply: "value * operand (e.g. qty * unit_price)",
+                divide: "value / operand (e.g. total / 12 = monthly_installment)",
+                round: "round(value, precision) (e.g. 12.3456 with precision 2 ➔ 12.35)",
+                modulo: "value % operand (e.g. 10 % 3 = 1)",
+                percentage: "(value / 100.0) * operand (e.g. 10% discount on 250 = 25.0)",
+                abs: "abs(value) (e.g. -45.5 ➔ 45.5)",
+            };
+            return hints[t.math_op] || "Applies arithmetic calculation to variable.";
+        } else if (cat === "string_slice") {
+            const hints = {
+                slice: 'Start 0, End 4 on "2026-Q1" ➔ "2026" (Character index substring)',
+                left: 'Length 3 on "DE12345" ➔ "DE" (First N characters from left)',
+                right: 'Length 4 on "ABC1234" ➔ "1234" (Last N characters from right)',
+                split: 'Delimiter "-" Index 1 on "INV-2026-001" ➔ "2026" (Token split)',
+            };
+            return hints[t.slice_mode] || "Extracts substring or splits variable.";
+        } else if (cat === "slugify") {
+            return '"Apple iPhone 15 Pro (128GB)!" ➔ "apple_iphone_15_pro_128gb" (URL/XML-ID safe slug)';
+        } else if (cat === "case_when") {
+            return 'JSON: [{"when": "VIP", "then": 0.20}, {"when": "STD", "then": 0.05}] ➔ Multi-branch logic';
+        } else if (cat === "python_expr") {
+            return 'value.strip().lower() if value else default or record.get("qty", 0) * record.get("price", 0)';
+        } else if (cat === "ai_prompt") {
+            return '"Extract province from Thai address: {value}" or "Categorize product into category: {value}"';
+        }
+        return "Cleanses and transforms input variable.";
+    }
+
+    loadExampleToSandbox(t) {
+        if (!t) return;
+        const cat = t.transform_category || "cleansing";
+        if (cat === "cleansing") {
+            if (t.cleansing_type === "trim") this.state.sampleInput = "   Sample Text Value   ";
+            else if (t.cleansing_type === "upper" || t.cleansing_type === "title") this.state.sampleInput = "john doe jr";
+            else if (t.cleansing_type === "lower") this.state.sampleInput = "John.Doe@ACME.COM";
+            else if (t.cleansing_type === "pad_left") this.state.sampleInput = "42";
+            else if (t.cleansing_type === "regex") this.state.sampleInput = "(+66) 81-234-5678";
+            else if (t.cleansing_type === "regex_extract") this.state.sampleInput = "INV-2026-098";
+            else if (t.cleansing_type === "strip_html") this.state.sampleInput = "<p>Hello <b>World</b></p>";
+            else if (t.cleansing_type === "strip_non_numeric") this.state.sampleInput = "$1,450.50 USD";
+            else this.state.sampleInput = "Sample Value";
+        } else if (cat === "date_format") {
+            this.state.sampleInput = "25/12/2025";
+        } else if (cat === "unit_conversion") {
+            this.state.sampleInput = "100";
+        } else if (cat === "math_expr") {
+            this.state.sampleInput = "100";
+        } else if (cat === "string_slice") {
+            this.state.sampleInput = "INV-2026-001";
+        } else if (cat === "slugify") {
+            this.state.sampleInput = "Apple iPhone 15 Pro (128GB)!";
+        } else if (cat === "filter_row") {
+            this.state.sampleInput = "active";
+        } else {
+            this.state.sampleInput = "123.45";
+        }
+        this.notification.add("Loaded sample input for " + cat, { type: "info" });
+    }
+
     // ------------------------------------------------------------
     // MODE 1: TRANSFORMATION STUDIO METHODS
     // ------------------------------------------------------------
@@ -174,6 +307,11 @@ export class VisualMapperWidget extends Component {
             sequence: (this.state.transformations.length + 1) * 10,
             source_field: src,
             output_field: src,
+            apply_filter: false,
+            filter_field: src,
+            filter_operator: "=",
+            filter_value: "",
+            filter_action: "keep_if",
             transform_category: "cleansing",
             cleansing_type: "trim",
             pad_char: "0",
@@ -202,6 +340,11 @@ export class VisualMapperWidget extends Component {
             sequence: (this.state.transformations.length + 1) * 10,
             source_field: col,
             output_field: col,
+            apply_filter: false,
+            filter_field: col,
+            filter_operator: "=",
+            filter_value: "",
+            filter_action: "keep_if",
             transform_category: "cleansing",
             cleansing_type: "trim",
         });
@@ -229,7 +372,8 @@ export class VisualMapperWidget extends Component {
             const preset = await this.orm.read("migration.transform.template", [parseInt(presetId)], ["name", "category", "step_ids"]);
             if (!preset || !preset[0]) return;
             const steps = await this.orm.read("migration.transform.template.step", preset[0].step_ids, [
-                "sequence", "transform_category", "cleansing_type", "regex_pattern", "regex_replace", "unit_type", "source_unit", "target_unit"
+                "sequence", "transform_category", "cleansing_type", "regex_pattern", "regex_replace",
+                "unit_type", "source_unit", "target_unit", "apply_filter", "filter_field", "filter_operator", "filter_value", "filter_action"
             ]);
 
             const src = this.state.selectedSourceCol || (this.state.rawColumns[0] || "col1");
@@ -238,6 +382,11 @@ export class VisualMapperWidget extends Component {
                     sequence: (this.state.transformations.length + 1) * 10,
                     source_field: src,
                     output_field: src,
+                    apply_filter: !!s.apply_filter,
+                    filter_field: s.filter_field || src,
+                    filter_operator: s.filter_operator || "=",
+                    filter_value: s.filter_value || "",
+                    filter_action: s.filter_action || "keep_if",
                     transform_category: s.transform_category || "cleansing",
                     cleansing_type: s.cleansing_type || "trim",
                     regex_pattern: s.regex_pattern || "",
@@ -272,23 +421,54 @@ export class VisualMapperWidget extends Component {
     }
 
     evaluateSingleTransformClient(val, t) {
+        if (t.transform_category === "filter_row") {
+            const s = String(val).trim();
+            const target = String(t.filter_value || "").trim();
+            let matched = false;
+            if (t.filter_operator === "=") matched = s.toLowerCase() === target.toLowerCase();
+            else if (t.filter_operator === "!=") matched = s.toLowerCase() !== target.toLowerCase();
+            else if (t.filter_operator === "contains") matched = s.toLowerCase().includes(target.toLowerCase());
+            else if (t.filter_operator === "is_null") matched = s === "";
+            else if (t.filter_operator === "is_not_null") matched = s !== "";
+            else matched = true;
+
+            if (t.filter_action === "keep_if" && !matched) return "[SKIPPED / FILTERED OUT]";
+            if (t.filter_action === "drop_if" && matched) return "[SKIPPED / FILTERED OUT]";
+            return val;
+        }
+
         if (t.transform_category === "cleansing") {
             const s = String(val);
             if (t.cleansing_type === "trim") return s.trim();
             if (t.cleansing_type === "upper") return s.toUpperCase();
             if (t.cleansing_type === "lower") return s.toLowerCase();
+            if (t.cleansing_type === "title") return s.replace(/\b\w/g, c => c.toUpperCase());
+            if (t.cleansing_type === "capitalize") return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+            if (t.cleansing_type === "pad_left") return s.padStart(t.pad_count || 10, t.pad_char || "0");
+            if (t.cleansing_type === "pad_right") return s.padEnd(t.pad_count || 10, t.pad_char || "0");
             if (t.cleansing_type === "regex" && t.regex_pattern) {
                 return s.replace(new RegExp(t.regex_pattern, "g"), t.regex_replace || "");
             }
+            if (t.cleansing_type === "strip_html") return s.replace(/<[^>]*>?/gm, "");
             if (t.cleansing_type === "strip_non_numeric") return s.replace(/[^\d.]/g, "");
+            if (t.cleansing_type === "strip_non_alphanumeric") return s.replace(/[^a-zA-Z0-9]/g, "");
             return s.trim();
+        } else if (t.transform_category === "unit_conversion") {
+            const n = parseFloat(val) || 0;
+            if (t.unit_type === "mass" && t.source_unit === "lb" && t.target_unit === "kg") return Math.round(n * 0.453592 * 1000) / 1000;
+            if (t.unit_type === "mass" && t.source_unit === "kg" && t.target_unit === "lb") return Math.round(n * 2.20462 * 1000) / 1000;
+            if (t.unit_type === "length" && t.source_unit === "in" && t.target_unit === "cm") return Math.round(n * 2.54 * 100) / 100;
+            if (t.unit_type === "temp" && t.source_unit === "F" && t.target_unit === "C") return Math.round(((n - 32) * 5 / 9) * 10) / 10;
+            return n * (parseFloat(t.custom_scale_ratio) || 1.0);
         } else if (t.transform_category === "math_expr") {
             const n = parseFloat(val) || 0;
-            const op = t.math_operand || 0;
+            const op = parseFloat(t.math_operand) || 0;
             if (t.math_op === "add") return n + op;
             if (t.math_op === "subtract") return n - op;
             if (t.math_op === "multiply") return n * op;
             if (t.math_op === "divide" && op !== 0) return n / op;
+            if (t.math_op === "round") return Math.round(n * 100) / 100;
+            if (t.math_op === "percentage") return (n / 100.0) * op;
             return n;
         } else if (t.transform_category === "slugify") {
             return String(val).toLowerCase().replace(/[^\w\s-]/g, "").replace(/[-\s]+/g, "_");

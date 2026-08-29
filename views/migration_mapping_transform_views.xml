@@ -9,10 +9,13 @@
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
                 <field name="transform_category"/>
+                <field name="apply_filter" widget="boolean_toggle" string="Filtered"/>
                 <field name="cleansing_type" invisible="transform_category != 'cleansing'"/>
+                <field name="filter_action" invisible="transform_category != 'filter_row'"/>
                 <field name="unit_type" invisible="transform_category != 'unit_conversion'"/>
                 <field name="math_op" invisible="transform_category != 'math_expr'"/>
                 <field name="target_type" invisible="transform_category != 'type_conversion'"/>
+                <field name="usage_hint" string="Hint / Example" optional="show"/>
             </list>
         </field>
     </record>
@@ -24,11 +27,25 @@
         <field name="arch" type="xml">
             <form string="Transformation Step">
                 <sheet>
+                    <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center" invisible="not usage_hint">
+                        <i class="fa fa-lightbulb-o text-warning me-2 fs-5"/>
+                        <div>
+                            <strong>Example &amp; Hint: </strong>
+                            <field name="usage_hint" class="d-inline fw-semibold text-dark" readonly="1"/>
+                        </div>
+                    </div>
                     <group>
                         <group string="Step Configuration">
                             <field name="sequence"/>
                             <field name="transform_category"/>
+                            <field name="apply_filter" widget="boolean_toggle"/>
                             <field name="default_fallback"/>
+                        </group>
+                        <group string="Conditional Filter Rule" invisible="not apply_filter and transform_category != 'filter_row'">
+                            <field name="filter_action" invisible="transform_category != 'filter_row'"/>
+                            <field name="filter_field" placeholder="Leave empty to use mapping field"/>
+                            <field name="filter_operator"/>
+                            <field name="filter_value" placeholder="e.g. active, 100, or regex"/>
                         </group>
                     </group>
                     

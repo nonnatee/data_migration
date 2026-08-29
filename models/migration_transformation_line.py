@@ -31,6 +31,7 @@ class MigrationTransformationLine(models.Model):
 
     transform_category = fields.Selection([
         ('cleansing', 'Data Cleansing & Sanitization'),
+        ('filter_row', 'Filter / Drop Records (Row Filter)'),
         ('date_format', 'Date & Time Formatting'),
         ('unit_conversion', 'Unit Conversion'),
         ('type_conversion', 'Data Type Casting'),
@@ -42,6 +43,43 @@ class MigrationTransformationLine(models.Model):
         ('python_expr', 'Custom Python Expression'),
         ('ai_prompt', 'AI Natural Language Transformer'),
     ], string='Transformation Category', default='cleansing', required=True)
+
+    # 0. Conditional Filter & Row Filtering
+    apply_filter = fields.Boolean(
+        string='Apply Filter Condition',
+        default=False,
+        help='Only execute this transformation on records that match the specified filter condition.'
+    )
+    filter_field = fields.Char(
+        string='Filter Variable',
+        help='Source variable to test condition against. Defaults to source variable if left empty.'
+    )
+    filter_operator = fields.Selection([
+        ('=', 'Equals (=)'),
+        ('!=', 'Not Equals (!=)'),
+        ('>', 'Greater Than (>)'),
+        ('<', 'Less Than (<)'),
+        ('>=', 'Greater or Equal (>=)'),
+        ('<=', 'Less or Equal (<=)'),
+        ('contains', 'Contains Substring'),
+        ('not_contains', 'Does Not Contain Substring'),
+        ('is_null', 'Is Null / Empty'),
+        ('is_not_null', 'Is Not Null / Not Empty'),
+        ('in', 'In Set (comma-separated: A, B, C)'),
+        ('regex', 'Matches Regex Pattern'),
+        ('python', 'Python Condition (e.g. value > 100)'),
+    ], string='Filter Operator', default='=')
+    filter_value = fields.Char(
+        string='Filter Target Value',
+        help='Comparison value, comma-separated set, regex pattern, or Python expression.'
+    )
+    filter_action = fields.Selection([
+        ('keep_if', 'Keep Record If Condition Met (Drop / Skip otherwise)'),
+        ('drop_if', 'Drop / Skip Record If Condition Met (Keep otherwise)'),
+    ], string='Filter Action', default='keep_if')
+
+    # Computed Usage Example Hint
+    usage_hint = fields.Char(string='Usage Example & Hint', compute='_compute_usage_hint')
 
     # 1. Cleansing
     cleansing_type = fields.Selection([
@@ -177,38 +215,221 @@ class MigrationTransformationLine(models.Model):
     # 8. AI
     ai_prompt_template = fields.Text(string='AI Instruction Prompt')
 
-    @api.onchange('source_field')
-    def _onchange_source_field(self):
-        if self.source_field and not self.output_field:
-            self.output_field = self.source_field
+    @api.depends(
+        'transform_category', 'cleansing_type', 'unit_type', 'source_unit', 'target_unit',
+        'target_type', 'math_op', 'slice_mode', 'filter_action', 'filter_operator'
+    )
+    def _compute_usage_hint(self):
+        for rec in self:
+            cat = rec.transform_category
+            if cat == 'cleansing':
+                hints = {
+                    'trim': '"John Doe   " ➔ "John Doe" (Removes leading & trailing whitespace)',
+                    'upper': '"acme corp" ➔ "ACME CORP" (Converts all characters to uppercase)',
+                    'lower': '"User@Company.COM" ➔ "user@company.com" (Standardizes email/text to lowercase)',
+                    'title': '"john doe jr" ➔ "John Doe Jr" (Capitalizes first letter of each word)',
+                    'capitalize': '"pending review" ➔ "Pending review" (Capitalizes first letter only)',
+                    'pad_left': '"42" (pad="0", len=6) ➔ "000042" (Fixed-width invoice / customer codes)',
+                    'pad_right': '"SKU" (pad="_", len=8) ➔ "SKU_____" (Appends padding to target length)',
+                    'regex': 'Pattern: r"[^\\d+]" Repl: "" ➔ "(555) 123-4567" becomes "5551234567"',
+                    'regex_extract': 'Pattern: r"INV-(\\d+)" Group: 1 ➔ Extracts "1002" from "INV-1002-2026"',
+                    'strip_html': '"<p><b>Hello</b> World</p>" ➔ "Hello World" (Strips HTML tags & decodes entities)',
+                    'strip_non_numeric': '"$1,250.75 USD" ➔ "1250.75" (Keeps only digits and decimal point)',
+                    'strip_non_alphanumeric': '"AB#12-34_XY!" ➔ "AB1234XY" (Strips punctuation & symbols)',
+                    'handle_null': 'Empty or None ➔ Default fallback value (e.g. "N/A" or "0")',
+                    'drop_if_null': 'Empty or None ➔ Drops / skips entire record from ETL load',
+                }
+                rec.usage_hint = hints.get(rec.cleansing_type, 'Cleanses and sanitizes input data.')
+            elif cat == 'filter_row':
+                if rec.filter_action == 'keep_if':
+                    rec.usage_hint = 'Keep record ONLY if condition is met (e.g. status == "active" or amount > 0); drop otherwise.'
+                else:
+                    rec.usage_hint = 'Drop / skip record if condition is met (e.g. is_deleted == "1" or country == "TEST"); keep otherwise.'
+            elif cat == 'date_format':
+                rec.usage_hint = '"25/12/2025" (Input: "%d/%m/%Y", Output: "%Y-%m-%d") ➔ "2025-12-25". Supports tz offset & day offsets.'
+            elif cat == 'unit_conversion':
+                if rec.unit_type == 'mass':
+                    rec.usage_hint = f'Mass conversion ({rec.source_unit} ➔ {rec.target_unit}): e.g. 100 lb ➔ ~45.36 kg'
+                elif rec.unit_type == 'length':
+                    rec.usage_hint = f'Length conversion ({rec.source_unit} ➔ {rec.target_unit}): e.g. 10 in ➔ 25.4 cm'
+                elif rec.unit_type == 'volume':
+                    rec.usage_hint = f'Volume conversion ({rec.source_unit} ➔ {rec.target_unit}): e.g. 5 gal ➔ ~18.93 l'
+                elif rec.unit_type == 'temp':
+                    rec.usage_hint = f'Temperature conversion ({rec.source_unit} ➔ {rec.target_unit}): e.g. 98.6 °F ➔ 37.0 °C'
+                else:
+                    rec.usage_hint = 'Multiplier ratio: Value * Scale Ratio (e.g. 100 * 1.07 = 107.0 for VAT/markup)'
+            elif cat == 'type_conversion':
+                hints = {
+                    'string': '123 ➔ "123" (Casts number/object to text string)',
+                    'integer': '"123.45" ➔ 123 (Casts to integer whole number)',
+                    'float': '"$1250.50" ➔ 1250.50 (Casts to floating point decimal)',
+                    'boolean': '"yes", "1", "true", "active" ➔ True; others ➔ False',
+                    'date': '"2026-08-29 15:30:00" ➔ "2026-08-29" (Extracts ISO date portion)',
+                    'datetime': '"2026-08-29" ➔ "2026-08-29 00:00:00" (Expands date to timestamp)',
+                    'json_parse': '\'{"key": "val"}\' ➔ Python dictionary object',
+                    'json_dump': 'Dictionary / List ➔ JSON string representation',
+                    'base64_encode': '"hello" ➔ "aGVsbG8=" (Encodes text/binary for attachments)',
+                    'base64_decode': '"aGVsbG8=" ➔ "hello" (Decodes base64 string back to text)',
+                }
+                rec.usage_hint = hints.get(rec.target_type, 'Casts variable to target data type.')
+            elif cat == 'value_map':
+                rec.usage_hint = 'JSON: {"M": "Male", "F": "Female", "O": "Other"} ➔ Translates legacy codes to standard values.'
+            elif cat == 'math_expr':
+                hints = {
+                    'add': 'value + operand (e.g. 100 + 15 = 115)',
+                    'subtract': 'value - operand (e.g. 100 - 20 = 80)',
+                    'multiply': 'value * operand (e.g. qty * unit_price)',
+                    'divide': 'value / operand (e.g. total / 12 = monthly_installment)',
+                    'round': 'round(value, precision) (e.g. 12.3456 with precision 2 ➔ 12.35)',
+                    'modulo': 'value % operand (e.g. 10 % 3 = 1)',
+                    'percentage': '(value / 100.0) * operand (e.g. 10% discount on 250 = 25.0)',
+                    'abs': 'abs(value) (e.g. -45.5 ➔ 45.5)',
+                }
+                rec.usage_hint = hints.get(rec.math_op, 'Applies arithmetic calculation to variable.')
+            elif cat == 'string_slice':
+                hints = {
+                    'slice': 'Start 0, End 4 on "2026-Q1" ➔ "2026" (Character index substring)',
+                    'left': 'Length 3 on "DE12345" ➔ "DE" (First N characters from left)',
+                    'right': 'Length 4 on "ABC1234" ➔ "1234" (Last N characters from right)',
+                    'split': 'Delimiter "-" Index 1 on "INV-2026-001" ➔ "2026" (Token split)',
+                }
+                rec.usage_hint = hints.get(rec.slice_mode, 'Extracts substring or splits variable.')
+            elif cat == 'slugify':
+                rec.usage_hint = '"Apple iPhone 15 Pro (128GB)!" ➔ "apple_iphone_15_pro_128gb" (URL/XML-ID safe slug)'
+            elif cat == 'case_when':
+                rec.usage_hint = 'JSON: [{"when": "VIP", "then": 0.20}, {"when": "STD", "then": 0.05}] ➔ Multi-branch logic'
+            elif cat == 'python_expr':
+                rec.usage_hint = 'value.strip().lower() if value else default or record.get("qty", 0) * record.get("price", 0)'
+            elif cat == 'ai_prompt':
+                rec.usage_hint = '"Extract province from Thai address: {value}" or "Categorize product into category: {value}"'
+            else:
+                rec.usage_hint = 'Transform input variable for migration mapping.'
 
-    @api.depends('source_field', 'output_field', 'transform_category', 'cleansing_type')
+    @api.depends('source_field', 'output_field', 'transform_category', 'cleansing_type', 'filter_action', 'apply_filter')
     def _compute_name(self):
         for rec in self:
             src = rec.source_field or 'src'
             out = rec.output_field or src
             cat = rec.transform_category or 'transform'
+            prefix = "[Filtered] " if rec.apply_filter else ""
             if cat == 'cleansing':
                 action = dict(rec._fields['cleansing_type'].selection).get(rec.cleansing_type, 'Cleanse')
-                rec.name = f"{src} -> {action} -> {out}"
+                rec.name = f"{prefix}{src} -> {action} -> {out}"
+            elif cat == 'filter_row':
+                action = "Keep if" if rec.filter_action == 'keep_if' else "Drop if"
+                rec.name = f"Row Filter: {action} {rec.filter_field or src} {rec.filter_operator} {rec.filter_value or ''}"
             elif cat == 'unit_conversion':
-                rec.name = f"{src} ({rec.source_unit}->{rec.target_unit}) -> {out}"
+                rec.name = f"{prefix}{src} ({rec.source_unit}->{rec.target_unit}) -> {out}"
             elif cat == 'type_conversion':
-                rec.name = f"{src} (cast to {rec.target_type}) -> {out}"
+                rec.name = f"{prefix}{src} (cast to {rec.target_type}) -> {out}"
             elif cat == 'math_expr':
-                rec.name = f"{src} (math {rec.math_op}) -> {out}"
+                rec.name = f"{prefix}{src} (math {rec.math_op}) -> {out}"
             elif cat == 'date_format':
-                rec.name = f"{src} (date format) -> {out}"
+                rec.name = f"{prefix}{src} (date format) -> {out}"
             elif cat == 'slugify':
-                rec.name = f"{src} (slugify) -> {out}"
+                rec.name = f"{prefix}{src} (slugify) -> {out}"
             elif cat == 'ai_prompt':
-                rec.name = f"{src} (AI transform) -> {out}"
+                rec.name = f"{prefix}{src} (AI transform) -> {out}"
             else:
-                rec.name = f"{src} ({cat}) -> {out}"
+                rec.name = f"{prefix}{src} ({cat}) -> {out}"
+
+    def _eval_condition(self, row_dict):
+        """Evaluates whether row_dict satisfies this transformation line's filter condition."""
+        self.ensure_one()
+        f_field = self.filter_field or self.source_field
+        raw_val = row_dict.get(f_field)
+        op = self.filter_operator or '='
+        target = self.filter_value or ''
+
+        if op == 'is_null':
+            return raw_val is None or str(raw_val).strip() == ''
+        elif op == 'is_not_null':
+            return raw_val is not None and str(raw_val).strip() != ''
+
+        s_val = '' if raw_val is None else str(raw_val).strip()
+
+        if op == 'python':
+            eval_ctx = {
+                'value': raw_val,
+                'record': row_dict,
+                're': re,
+                'datetime': datetime,
+                'math': math,
+                'json': json,
+            }
+            try:
+                return bool(eval(target, eval_ctx))
+            except Exception as e:
+                _logger.warning("Python filter condition evaluation error on field '%s': %s", f_field, e)
+                return False
+
+        if op == 'contains':
+            return target.lower() in s_val.lower()
+        elif op == 'not_contains':
+            return target.lower() not in s_val.lower()
+        elif op == 'in':
+            items = [i.strip().lower() for i in target.split(',') if i.strip()]
+            return s_val.lower() in items
+        elif op == 'regex':
+            try:
+                return bool(re.search(target, s_val, re.IGNORECASE))
+            except Exception:
+                return False
+
+        # Numeric or String comparison for =, !=, >, <, >=, <=
+        try:
+            num_val = float(re.sub(r'[^\d.-]', '', s_val)) if s_val else 0.0
+            num_target = float(re.sub(r'[^\d.-]', '', target)) if target else 0.0
+            if op == '=':
+                return s_val.lower() == target.lower() or num_val == num_target
+            elif op == '!=':
+                return s_val.lower() != target.lower() and num_val != num_target
+            elif op == '>':
+                return num_val > num_target
+            elif op == '<':
+                return num_val < num_target
+            elif op == '>=':
+                return num_val >= num_target
+            elif op == '<=':
+                return num_val <= num_target
+        except Exception:
+            if op == '=':
+                return s_val.lower() == target.lower()
+            elif op == '!=':
+                return s_val.lower() != target.lower()
+            elif op == '>':
+                return s_val > target
+            elif op == '<':
+                return s_val < target
+            elif op == '>=':
+                return s_val >= target
+            elif op == '<=':
+                return s_val <= target
+
+        return True
 
     def apply_transformation(self, record_dict):
         """Applies transformation logic reading from record_dict[source_field] and writing to record_dict[output_field]."""
         self.ensure_one()
+
+        # 1. Row Filter Category
+        if self.transform_category == 'filter_row':
+            matched = self._eval_condition(record_dict)
+            if self.filter_action == 'keep_if' and not matched:
+                raise UserError("__DROP_ROW_FILTER__")
+            elif self.filter_action == 'drop_if' and matched:
+                raise UserError("__DROP_ROW_FILTER__")
+            return record_dict.get(self.source_field)
+
+        # 2. Conditional Transform Filter
+        if self.apply_filter:
+            matched = self._eval_condition(record_dict)
+            if not matched:
+                out_f = self.output_field or self.source_field
+                if out_f not in record_dict:
+                    record_dict[out_f] = record_dict.get(self.source_field)
+                return record_dict.get(out_f)
+
         raw_val = record_dict.get(self.source_field)
         transformed_val = self._evaluate_single_transform(raw_val, record_dict)
         record_dict[self.output_field] = transformed_val

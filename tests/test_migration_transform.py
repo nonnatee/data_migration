@@ -81,3 +81,69 @@ class TestMigrationTransform(common.TransactionCase):
 
         target_vals = self.template._apply_mapping_stage(clean_row)
         self.assertEqual(target_vals['name'], 'John Doe')
+
+    def test_row_filter_transformation(self):
+        """Test row filtering logic in transformation stage."""
+        # 1. Keep if status is active
+        tline = self.env['migration.transformation.line'].create({
+            'template_id': self.template.id,
+            'source_field': 'cust_name',
+            'transform_category': 'filter_row',
+            'filter_action': 'keep_if',
+            'filter_field': 'status',
+            'filter_operator': '=',
+            'filter_value': 'active',
+        })
+
+        rec_active = {'cust_name': 'Alice', 'status': 'active'}
+        res = tline.apply_transformation(rec_active)
+        self.assertEqual(res, 'Alice')
+
+        rec_inactive = {'cust_name': 'Bob', 'status': 'inactive'}
+        from odoo.exceptions import UserError
+        with self.assertRaises(UserError):
+            tline.apply_transformation(rec_inactive)
+
+    def test_conditional_transformation_execution(self):
+        """Test conditional execution filter on transformation rules."""
+        # Cleanse uppercase only if cust_name contains 'corp'
+        tline = self.env['migration.transformation.line'].create({
+            'template_id': self.template.id,
+            'source_field': 'cust_name',
+            'output_field': 'clean_name',
+            'transform_category': 'cleansing',
+            'cleansing_type': 'upper',
+            'apply_filter': True,
+            'filter_field': 'cust_name',
+            'filter_operator': 'contains',
+            'filter_value': 'corp',
+        })
+
+        # Matching row -> transformed to uppercase
+        rec_match = {'cust_name': 'acme corp'}
+        tline.apply_transformation(rec_match)
+        self.assertEqual(rec_match['clean_name'], 'ACME CORP')
+
+        # Non-matching row -> filter not satisfied, original value preserved
+        rec_non_match = {'cust_name': 'john doe'}
+        tline.apply_transformation(rec_non_match)
+        self.assertEqual(rec_non_match['clean_name'], 'john doe')
+
+    def test_usage_hint_computation(self):
+        """Test usage hints are computed accurately across transformation categories."""
+        tline = self.env['migration.transformation.line'].create({
+            'template_id': self.template.id,
+            'source_field': 'price_str',
+            'transform_category': 'cleansing',
+            'cleansing_type': 'trim',
+        })
+        self.assertIn('John Doe', tline.usage_hint)
+
+        tline.write({'transform_category': 'date_format'})
+        self.assertIn('%Y-%m-%d', tline.usage_hint)
+
+        tline.write({'transform_category': 'math_expr', 'math_op': 'add'})
+        self.assertIn('value + operand', tline.usage_hint)
+
+        tline.write({'transform_category': 'filter_row', 'filter_action': 'keep_if'})
+        self.assertIn('Keep record ONLY', tline.usage_hint)

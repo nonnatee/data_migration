@@ -1,5 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- Transformation Preset Search View -->
+    <record id="view_migration_transform_template_search" model="ir.ui.view">
+        <field name="name">migration.transform.template.search</field>
+        <field name="model">migration.transform.template</field>
+        <field name="arch" type="xml">
+            <search string="Search Transformation Presets">
+                <field name="name" string="Preset Name"/>
+                <field name="category"/>
+                <separator/>
+                <filter string="Cleansing" name="filter_cleansing" domain="[('category', '=', 'cleansing')]"/>
+                <filter string="Formatting" name="filter_formatting" domain="[('category', '=', 'formatting')]"/>
+                <filter string="Calculations" name="filter_calc" domain="[('category', '=', 'calculation')]"/>
+                <filter string="Units" name="filter_unit" domain="[('category', '=', 'unit')]"/>
+                <filter string="Archived" name="filter_inactive" domain="[('active', '=', False)]"/>
+                <group>
+                    <filter string="Category" name="group_by_category" context="{'group_by': 'category'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <!-- Transformation Preset List View -->
     <record id="view_migration_transform_template_list" model="ir.ui.view">
         <field name="name">migration.transform.template.list</field>
@@ -44,17 +65,34 @@
                                     <field name="sequence" widget="handle"/>
                                     <field name="name"/>
                                     <field name="transform_category"/>
+                                    <field name="apply_filter" widget="boolean_toggle" string="Filtered"/>
                                     <field name="cleansing_type" invisible="transform_category != 'cleansing'"/>
+                                    <field name="filter_action" invisible="transform_category != 'filter_row'"/>
                                     <field name="unit_type" invisible="transform_category != 'unit_conversion'"/>
                                     <field name="math_op" invisible="transform_category != 'math_expr'"/>
                                     <field name="slice_mode" invisible="transform_category != 'string_slice'"/>
                                     <field name="target_type" invisible="transform_category != 'type_conversion'"/>
+                                    <field name="usage_hint" string="Hint / Example" optional="show"/>
                                 </list>
                                 <form string="Preset Step Detail">
+                                    <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center" invisible="not usage_hint">
+                                        <i class="fa fa-lightbulb-o text-warning me-2 fs-5"/>
+                                        <div>
+                                            <strong>Example &amp; Hint: </strong>
+                                            <field name="usage_hint" class="d-inline fw-semibold text-dark" readonly="1"/>
+                                        </div>
+                                    </div>
                                     <group>
                                         <group string="Step Configuration">
                                             <field name="sequence"/>
                                             <field name="transform_category"/>
+                                            <field name="apply_filter" widget="boolean_toggle"/>
+                                        </group>
+                                        <group string="Conditional Filter Rule" invisible="not apply_filter and transform_category != 'filter_row'">
+                                            <field name="filter_action" invisible="transform_category != 'filter_row'"/>
+                                            <field name="filter_field" placeholder="Leave empty to use source field"/>
+                                            <field name="filter_operator"/>
+                                            <field name="filter_value" placeholder="e.g. active, 100, or regex"/>
                                         </group>
                                     </group>
                                     <group string="Data Cleansing" invisible="transform_category != 'cleansing'">
@@ -108,5 +146,6 @@
         <field name="name">Transformation Presets</field>
         <field name="res_model">migration.transform.template</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_migration_transform_template_search"/>
     </record>
 </odoo>

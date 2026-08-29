@@ -47,6 +47,20 @@
             <field name="transform_category">slugify</field>
         </record>
 
+        <record id="preset_transform_filter_active" model="migration.transform.template">
+            <field name="name">Filter Active Records Only</field>
+            <field name="category">cleansing</field>
+            <field name="description">Keeps only rows where status/active equals '1' or 'active' or 'true'.</field>
+        </record>
+        <record id="preset_step_filter_active" model="migration.transform.template.step">
+            <field name="template_id" ref="preset_transform_filter_active"/>
+            <field name="sequence">10</field>
+            <field name="transform_category">filter_row</field>
+            <field name="filter_action">keep_if</field>
+            <field name="filter_operator">in</field>
+            <field name="filter_value">1, active, true, yes</field>
+        </record>
+
         <!-- Default Mock Connection for Presets -->
         <record id="connection_template_preset_demo" model="migration.connection">
             <field name="name">Default System CSV Connector</field>
