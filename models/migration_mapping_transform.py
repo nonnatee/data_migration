@@ -44,6 +44,7 @@ class MigrationMappingTransform(models.Model):
 
     sequence = fields.Integer(string='Sequence', default=10)
     line_id = fields.Many2one('migration.mapping.line', string='Field Mapping Line', required=True, ondelete='cascade')
+    name = fields.Char(string='Name', compute='_compute_name', store=True, readonly=False)
     
     transform_category = fields.Selection([
         ('cleansing', 'Data Cleansing & Sanitization'),
