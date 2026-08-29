@@ -149,7 +149,7 @@
                                         <span class="fw-bold">Table Columns:</span>
                                         <span class="badge bg-primary" t-out="state.selectedTable"/>
                                         <span class="text-muted small">
-                                            (<t t-out="state.selectedFields.filter(f => f.selected).length"/> of <t t-out="state.selectedFields.length"/> selected)
+                                            (<t t-out="selectedFieldsCount"/> of <t t-out="state.selectedFields.length"/> selected)
                                         </span>
                                     </div>
                                     <div class="d-flex align-items-center gap-2">
@@ -503,7 +503,7 @@
                                         <tr>
                                             <td class="text-muted" t-out="row_index + 1"/>
                                             <t t-foreach="state.previewColumns" t-as="col" t-key="col">
-                                                <td class="text-truncate" style="max-width: 250px;" t-out="row[col] !== undefined ? String(row[col]) : ''"/>
+                                                <td class="text-truncate" style="max-width: 250px;" t-out="formatCell(row, col)"/>
                                             </t>
                                         </tr>
                                     </t>

@@ -219,6 +219,17 @@ export class VisualExtractionBuilder extends Component {
         }
     }
 
+    formatCell(row, col) {
+        const val = row[col];
+        if (val === undefined || val === null) {
+            return "";
+        }
+        if (typeof val === "object") {
+            return JSON.stringify(val);
+        }
+        return String(val);
+    }
+
     // ------------------------------------------------------------
     // TABLE & FIELD ACTIONS
     // ------------------------------------------------------------
