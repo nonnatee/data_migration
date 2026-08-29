@@ -27,13 +27,14 @@
         <field name="name">migration.extraction.search</field>
         <field name="model">migration.extraction</field>
         <field name="arch" type="xml">
-            <search string="Search Extractions">
+            <search string="Extraction Queries">
                 <field name="name"/>
                 <field name="connection_id"/>
                 <field name="watermark_column"/>
                 <filter string="Incremental Watermark" name="filter_incremental" domain="[('extraction_type', '=', 'incremental_watermark')]"/>
                 <filter string="Full Extraction" name="filter_full" domain="[('extraction_type', '=', 'full')]"/>
-                <group expand="0" string="Group By">
+                <separator/>
+                <group>
                     <filter string="Connection" name="group_by_connection" context="{'group_by': 'connection_id'}"/>
                     <filter string="Strategy" name="group_by_strategy" context="{'group_by': 'extraction_type'}"/>
                 </group>
@@ -97,8 +98,8 @@
                                 </group>
                             </group>
                             <group string="Compiled Query String">
-                                <field name="compiled_query" widget="ace" options="{'mode': 'sql'}" readonly="1"/>
-                                <field name="custom_query" widget="ace" options="{'mode': 'sql'}" invisible="use_visual_builder"/>
+                                <field name="compiled_query" readonly="1"/>
+                                <field name="custom_query" invisible="use_visual_builder"/>
                             </group>
                         </page>
 
