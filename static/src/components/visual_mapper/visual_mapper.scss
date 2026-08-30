@@ -1,8 +1,72 @@
 .o_visual_mapper_container {
-    min-height: 620px;
+    height: 720px;
+    max-height: calc(100vh - 160px);
+    min-height: 560px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     background-color: #f8f9fa;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e9ecef;
+
+    .o_visual_mapper_header {
+        flex-shrink: 0;
+        z-index: 5;
+    }
+
+    .o_visual_mapper_body {
+        flex: 1 1 0;
+        min-height: 0;
+        height: 100%;
+        display: flex;
+        overflow: hidden;
+    }
+
+    .o_transform_studio {
+        flex: 1 1 0;
+        min-height: 0;
+        height: 100%;
+        display: flex;
+        overflow: hidden;
+    }
+
+    .o_mapper_source_panel,
+    .o_mapper_target_panel {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .o_mapper_panel_header {
+        flex-shrink: 0;
+        z-index: 2;
+    }
+
+    .o_mapper_scroll_pane {
+        flex: 1 1 0;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+
+        &::-webkit-scrollbar {
+            width: 6px;
+        }
+        &::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        &::-webkit-scrollbar-thumb {
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+            &:hover {
+                background-color: rgba(0, 0, 0, 0.35);
+            }
+        }
+    }
 
     .fs-7 {
         font-size: 0.825rem;

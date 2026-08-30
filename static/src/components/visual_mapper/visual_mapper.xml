@@ -447,8 +447,8 @@
                 <svg class="o_visual_mapper_svg position-absolute top-0 start-0 w-100 h-100 pe-none" t-ref="svgCanvas" style="z-index: 10; transition: opacity 0.15s ease;"></svg>
 
                 <!-- Left Column: Available Variables (Raw + Derived) -->
-                <div class="border-end bg-light d-flex flex-column" style="min-width: 280px; flex: 1;">
-                    <div class="p-3 border-bottom bg-view d-flex align-items-center justify-content-between">
+                <div class="border-end bg-light d-flex flex-column o_mapper_source_panel" style="min-width: 280px; flex: 1;">
+                    <div class="p-3 border-bottom bg-view d-flex align-items-center justify-content-between o_mapper_panel_header">
                         <span class="fw-bold text-uppercase fs-7 text-muted">
                             <i class="fa fa-database me-1"/> Available Variables (<t t-out="state.availableVariables.length"/>)
                         </span>
@@ -457,9 +457,10 @@
                             <input type="text" class="form-control" placeholder="Search..." t-model="state.sourceSearch"/>
                         </div>
                     </div>
-                    <div class="p-2 overflow-auto flex-grow-1" t-ref="sourceList" t-on-scroll="() => this.onListScroll()">
+                    <div class="p-2 overflow-auto flex-grow-1 o_mapper_scroll_pane" t-ref="sourceList" t-on-scroll="() => this.onListScroll()">
                         <t t-foreach="filteredAvailableVariables" t-as="v" t-key="v">
                             <div t-attf-class="d-flex align-items-center justify-content-between p-2 mb-1 rounded cursor-pointer border #{state.selectedSourceCol == v ? 'bg-primary text-white border-primary shadow-sm' : 'bg-view border-light hover-bg-light'} #{state.dragSourceCol == v ? 'opacity-50' : ''}"
+                                 t-att-data-source-var="v"
                                  draggable="true"
                                  t-on-dragstart="(e) => this.onSourceDragStart(e, v)"
                                  t-on-dragend="() => this.onDragEnd()"
@@ -478,8 +479,8 @@
                 </div>
 
                 <!-- Right Column: Target Odoo Model Fields -->
-                <div class="bg-light d-flex flex-column" style="min-width: 380px; flex: 1.5;">
-                    <div class="p-3 border-bottom bg-view d-flex align-items-center justify-content-between">
+                <div class="bg-light d-flex flex-column o_mapper_target_panel" style="min-width: 380px; flex: 1.5;">
+                    <div class="p-3 border-bottom bg-view d-flex align-items-center justify-content-between o_mapper_panel_header">
                         <span class="fw-bold text-uppercase fs-7 text-muted">
                             <i class="fa fa-cubes me-1"/> Target Fields (<t t-out="state.targetFields.length"/>)
                         </span>
@@ -488,7 +489,7 @@
                             <input type="text" class="form-control" placeholder="Search target fields..." t-model="state.targetSearch"/>
                         </div>
                     </div>
-                    <div class="p-2 overflow-auto flex-grow-1" t-ref="targetList" t-on-scroll="() => this.onListScroll()">
+                    <div class="p-2 overflow-auto flex-grow-1 o_mapper_scroll_pane" t-ref="targetList" t-on-scroll="() => this.onListScroll()">
                         <t t-foreach="filteredTargetFields" t-as="f" t-key="f.id">
                             <div t-attf-class="p-2 mb-2 rounded bg-view border #{state.dragOverTargetId == f.id ? 'border-primary bg-primary-subtle' : 'border-light'} shadow-sm"
                                  t-att-data-target-id="f.id"

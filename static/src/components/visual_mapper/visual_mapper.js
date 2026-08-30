@@ -605,6 +605,8 @@ export class VisualMapperWidget extends Component {
 
         const svg = this.svgRef.el;
         const containerRect = this.containerRef.el.getBoundingClientRect();
+        const targetListEl = this.containerRef.el.querySelector('[t-ref="targetList"]') || this.containerRef.el.querySelector('.o_mapper_target_panel .o_mapper_scroll_pane');
+        const targetListRect = targetListEl ? targetListEl.getBoundingClientRect() : containerRect;
 
         while (svg.firstChild) {
             svg.removeChild(svg.firstChild);
@@ -616,11 +618,28 @@ export class VisualMapperWidget extends Component {
             if (!targetEl) continue;
 
             const targetRect = targetEl.getBoundingClientRect();
+            // Skip lines for target cards that are scrolled outside the visible scroll pane
+            if (targetRect.bottom < targetListRect.top || targetRect.top > targetListRect.bottom) {
+                continue;
+            }
+
             const x2 = targetRect.left - containerRect.left;
             const y2 = targetRect.top + targetRect.height / 2 - containerRect.top;
 
-            const x1 = containerRect.width * 0.35; // approx end of left panel
-            const y1 = y2; // smooth alignment
+            let x1 = containerRect.width * 0.38;
+            let y1 = y2;
+
+            // Connect directly to source pill if visible in source list
+            const sourceEl = this.containerRef.el.querySelector(`[data-source-var="${m.source_field}"]`);
+            if (sourceEl) {
+                const sourceListEl = this.containerRef.el.querySelector('[t-ref="sourceList"]') || this.containerRef.el.querySelector('.o_mapper_source_panel .o_mapper_scroll_pane');
+                const sourceListRect = sourceListEl ? sourceListEl.getBoundingClientRect() : containerRect;
+                const sourceRect = sourceEl.getBoundingClientRect();
+                if (sourceRect.bottom >= sourceListRect.top && sourceRect.top <= sourceListRect.bottom) {
+                    x1 = sourceRect.right - containerRect.left;
+                    y1 = sourceRect.top + sourceRect.height / 2 - containerRect.top;
+                }
+            }
 
             const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
             const dx = Math.abs(x2 - x1) * 0.5;
