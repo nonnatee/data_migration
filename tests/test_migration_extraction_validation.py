@@ -169,3 +169,47 @@ class TestMigrationExtractionValidation(common.TransactionCase):
         self.assertTrue(ai_config.is_default)
         default_p = self.env['migration.ai.config'].get_default_provider()
         self.assertEqual(default_p.id, ai_config.id)
+
+    def test_05_extraction_field_selection_and_projection(self):
+        """Test that field selection, deselected fields, aliases, and WHERE filters are properly applied in extraction."""
+        extraction = self.env['migration.extraction'].create({
+            'name': 'Projected Partner Extraction',
+            'connection_id': self.conn.id,
+            'extraction_type': 'custom_query',
+            'selected_fields_json': json.dumps([
+                {'field': 'id', 'alias': 'partner_ref', 'cast': 'integer', 'selected': True},
+                {'field': 'name', 'alias': 'name', 'cast': 'none', 'selected': True},
+                {'field': 'email', 'alias': 'email', 'cast': 'none', 'selected': False},  # Unselected (excluded)
+                {'field': 'age', 'alias': 'age_years', 'cast': 'integer', 'selected': True},
+                {'field': 'updated_at', 'alias': 'updated_at', 'cast': 'none', 'selected': False},  # Unselected
+            ]),
+            'where_clauses_json': json.dumps([
+                {'field': 'age', 'operator': '>=', 'value': '28', 'conjunction': 'AND'}
+            ]),
+            'sort_clauses_json': json.dumps([
+                {'field': 'age', 'direction': 'DESC'}
+            ]),
+        })
+
+        records, columns = extraction.execute_extraction(limit=10, update_watermark=False)
+
+        # 1. Verify projected columns only contains selected fields and aliases
+        self.assertEqual(columns, ['partner_ref', 'name', 'age_years'])
+        self.assertNotIn('email', columns)
+        self.assertNotIn('updated_at', columns)
+
+        # 2. Verify WHERE filter (age >= 28: Alice=28, Charlie=35, David=42; Bob=15 is excluded)
+        self.assertEqual(len(records), 3)
+
+        # 3. Verify ORDER BY (DESC by age: David(42), Charlie(35), Alice(28))
+        self.assertEqual(records[0]['partner_ref'], 4)
+        self.assertEqual(records[0]['name'], 'David')
+        self.assertEqual(records[0]['age_years'], 42)
+        self.assertNotIn('email', records[0])
+        self.assertNotIn('updated_at', records[0])
+
+        # 4. Test run_preview_extraction RPC helper
+        preview_res = extraction.run_preview_extraction(limit=10)
+        self.assertTrue(preview_res['success'])
+        self.assertEqual(preview_res['columns'], ['partner_ref', 'name', 'age_years'])
+        self.assertEqual(len(preview_res['records']), 3)

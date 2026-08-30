@@ -296,6 +296,153 @@ class MigrationExtraction(models.Model):
                 'latency_ms': 0.0,
             }
 
+    def _apply_in_memory_projections_and_filters(self, records, columns):
+        """Applies field selection, aliasing, type casting, WHERE filtering, and ORDER BY sorting to records in-memory."""
+        if not records:
+            # Even if records is empty, compute the projected columns
+            selected_fields = json.loads(self.selected_fields_json or '[]')
+            active_fields = [f for f in selected_fields if f.get('selected', True)]
+            if active_fields:
+                projected_columns = []
+                for f in active_fields:
+                    field_name = f.get('field', '').strip()
+                    alias = f.get('alias', '').strip() or field_name
+                    if alias and alias not in projected_columns:
+                        projected_columns.append(alias)
+                return records, projected_columns
+            return records, columns
+
+        selected_fields = json.loads(self.selected_fields_json or '[]')
+        where_clauses = json.loads(self.where_clauses_json or '[]')
+        sort_clauses = json.loads(self.sort_clauses_json or '[]')
+
+        # 1. Apply WHERE Filtering
+        if where_clauses:
+            filtered_records = []
+            for row in records:
+                keep = True
+                for idx, clause in enumerate(where_clauses):
+                    c_field = clause.get('field', '').strip()
+                    c_op = clause.get('operator', '=').strip().upper()
+                    c_val = str(clause.get('value', '')).strip()
+                    c_conj = clause.get('conjunction', 'AND').strip().upper()
+
+                    if not c_field:
+                        continue
+
+                    cell_val = row.get(c_field)
+                    cell_str = str(cell_val) if cell_val is not None else ''
+
+                    match = False
+                    if c_op == '=':
+                        match = cell_str.lower() == c_val.lower()
+                    elif c_op == '!=':
+                        match = cell_str.lower() != c_val.lower()
+                    elif c_op == '>':
+                        try:
+                            match = float(cell_str) > float(c_val)
+                        except (ValueError, TypeError):
+                            match = cell_str > c_val
+                    elif c_op == '<':
+                        try:
+                            match = float(cell_str) < float(c_val)
+                        except (ValueError, TypeError):
+                            match = cell_str < c_val
+                    elif c_op == '>=':
+                        try:
+                            match = float(cell_str) >= float(c_val)
+                        except (ValueError, TypeError):
+                            match = cell_str >= c_val
+                    elif c_op == '<=':
+                        try:
+                            match = float(cell_str) <= float(c_val)
+                        except (ValueError, TypeError):
+                            match = cell_str <= c_val
+                    elif c_op in ('LIKE', 'ILIKE', 'CONTAINS'):
+                        match = c_val.lower() in cell_str.lower()
+                    elif c_op == 'NOT LIKE':
+                        match = c_val.lower() not in cell_str.lower()
+                    elif c_op == 'IS NULL':
+                        match = cell_val is None or cell_str == ''
+                    elif c_op == 'IS NOT NULL':
+                        match = cell_val is not None and cell_str != ''
+                    elif c_op == 'IN':
+                        in_vals = [v.strip().lower() for v in c_val.split(',')]
+                        match = cell_str.lower() in in_vals
+                    elif c_op == 'NOT IN':
+                        in_vals = [v.strip().lower() for v in c_val.split(',')]
+                        match = cell_str.lower() not in in_vals
+                    else:
+                        match = True
+
+                    if idx == 0:
+                        keep = match
+                    else:
+                        if c_conj == 'OR':
+                            keep = keep or match
+                        else:
+                            keep = keep and match
+
+                if keep:
+                    filtered_records.append(row)
+            records = filtered_records
+
+        # 2. Apply ORDER BY Sorting
+        if sort_clauses:
+            for s in reversed(sort_clauses):
+                sfield = s.get('field', '').strip()
+                sdir = s.get('direction', 'ASC').strip().upper()
+                if sfield:
+                    reverse = (sdir == 'DESC')
+                    records.sort(
+                        key=lambda r: (r.get(sfield) is None, r.get(sfield) if r.get(sfield) is not None else ''),
+                        reverse=reverse
+                    )
+
+        # 3. Apply Field Projections (Selection, Aliases, Type Casting)
+        if selected_fields:
+            active_fields = [f for f in selected_fields if f.get('selected', True)]
+            if active_fields:
+                projected_columns = []
+                for f in active_fields:
+                    field_name = f.get('field', '').strip()
+                    alias = f.get('alias', '').strip() or field_name
+                    if alias and alias not in projected_columns:
+                        projected_columns.append(alias)
+
+                projected_records = []
+                for row in records:
+                    new_row = {}
+                    for f in active_fields:
+                        src_col = f.get('field', '').strip()
+                        out_col = f.get('alias', '').strip() or src_col
+                        cast_type = f.get('cast', '').strip().lower()
+
+                        val = row.get(src_col)
+
+                        # Optional type casting
+                        if cast_type in ('int', 'integer') and val is not None and val != '':
+                            try:
+                                val = int(float(str(val).strip()))
+                            except (ValueError, TypeError):
+                                pass
+                        elif cast_type in ('float', 'decimal', 'numeric') and val is not None and val != '':
+                            try:
+                                val = float(str(val).strip())
+                            except (ValueError, TypeError):
+                                pass
+                        elif cast_type in ('varchar', 'text', 'string') and val is not None:
+                            val = str(val)
+                        elif cast_type == 'boolean' and val is not None and val != '':
+                            val = str(val).strip().lower() in ('1', 'true', 'yes', 't', 'y')
+
+                        new_row[out_col] = val
+                    projected_records.append(new_row)
+
+                return projected_records, projected_columns
+
+        return records, columns
+
     def execute_extraction(self, limit=None, update_watermark=True):
         """Executes data extraction based on strategy, compiled query, and updates watermark state."""
         self.ensure_one()
@@ -329,7 +476,11 @@ class MigrationExtraction(models.Model):
         try:
             if conn.conn_type == 'database_sql':
                 conn.db_query = effective_query
-            records, columns = conn._fetch_raw_records(limit=effective_limit)
+                fetch_limit = effective_limit
+            else:
+                where_clauses = json.loads(self.where_clauses_json or '[]')
+                fetch_limit = (effective_limit * 10) if (effective_limit and where_clauses) else (effective_limit if not where_clauses else None)
+            records, columns = conn._fetch_raw_records(limit=fetch_limit)
         finally:
             if conn.conn_type == 'database_sql':
                 conn.db_query = original_query
@@ -346,6 +497,12 @@ class MigrationExtraction(models.Model):
                         records = [r for r in records if str(r.get(self.watermark_column, '')) > str(last_wm)]
                 else:
                     records = [r for r in records if str(r.get(self.watermark_column, '')) > str(last_wm)]
+
+        # In-memory projection, filtering, aliasing, and sorting for non-SQL sources
+        if conn.conn_type != 'database_sql':
+            records, columns = self._apply_in_memory_projections_and_filters(records, columns)
+            if effective_limit and len(records) > effective_limit:
+                records = records[:effective_limit]
 
         # Update watermark state from extracted batch
         if update_watermark and records and self.watermark_column:
