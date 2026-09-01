@@ -50,6 +50,11 @@ class MigrationTemplate(models.Model):
     quality_score = fields.Float(string='Data Quality Score (%)', default=100.0, readonly=True)
     quality_report = fields.Text(string='Quality Audit Report', readonly=True)
 
+    # Pipeline Data Preview
+    preview_data = fields.Text(string='Pipeline Preview (JSON)', readonly=True)
+    preview_records_count = fields.Integer(string='Sample Records Count', readonly=True)
+    preview_latency = fields.Float(string='Preview Latency (ms)', readonly=True)
+
     def _compute_stage_counts(self):
         for rec in self:
             rec.transform_line_count = len(rec.transform_line_ids)
@@ -412,7 +417,6 @@ Output a JSON array of rule objects with keys:
             'category': p.category,
             'step_count': p.step_count,
         } for p in presets]
-
         return {
             'template_id': self.id,
             'template_name': self.name,
@@ -426,6 +430,9 @@ Output a JSON array of rule objects with keys:
             'transformations': transform_data,
             'mappings': mapping_data,
             'transform_presets': presets_data,
+            'preview_data': json.loads(self.preview_data or '{}') if self.preview_data else None,
+            'preview_records_count': self.preview_records_count,
+            'preview_latency': self.preview_latency,
         }
 
     def action_save_visual_mapping_data(self, transformations, mappings):
@@ -455,18 +462,18 @@ Output a JSON array of rule objects with keys:
                 'output_date_format': t.get('output_date_format', '%Y-%m-%d'),
                 'unit_type': t.get('unit_type', 'mass'),
                 'source_unit': t.get('source_unit', 'kg'),
-                'target_unit': t.get('target_unit', 'lb'),
+                'target_unit': t.get('target_unit', 'kg'),
                 'custom_scale_ratio': t.get('custom_scale_ratio', 1.0),
-                'target_type': t.get('target_type', 'string'),
+                'target_type': t.get('target_type', 'char'),
                 'value_mapping_json': t.get('value_mapping_json', '{}'),
                 'python_code': t.get('python_code', ''),
                 'default_fallback': t.get('default_fallback', ''),
                 'math_op': t.get('math_op', 'add'),
                 'math_operand': t.get('math_operand', 0.0),
                 'math_round_precision': t.get('math_round_precision', 2),
-                'slice_mode': t.get('slice_mode', 'slice'),
+                'slice_mode': t.get('slice_mode', 'first_n'),
                 'slice_start': t.get('slice_start', 0),
-                'slice_end': t.get('slice_end', 10),
+                'slice_end': t.get('slice_end', 5),
                 'slice_length': t.get('slice_length', 5),
                 'split_delimiter': t.get('split_delimiter', ','),
                 'split_index': t.get('split_index', 0),
@@ -493,6 +500,148 @@ Output a JSON array of rule objects with keys:
                 })
 
         return True
+
+    # ------------------------------------------------------------
+    # 4. PIPELINE PREVIEW & AUDIT ENGINE
+    # ------------------------------------------------------------
+
+    def run_preview_pipeline(self, limit=10):
+        """Runs the end-to-end ETL pipeline on top sample records in-memory without database commits."""
+        self.ensure_one()
+        start_ts = time.time()
+        try:
+            if self.extraction_id:
+                raw_records, raw_columns = self.extraction_id.execute_extraction(limit=limit, update_watermark=False)
+            else:
+                raw_records, raw_columns = self.connection_id._fetch_raw_records(limit=limit)
+
+            transformed_records = []
+            mapped_records = []
+            row_statuses = []
+
+            validation_rules = self.validation_rule_ids.filtered(lambda r: r.active)
+
+            for idx, raw_row in enumerate(raw_records):
+                status_info = {
+                    'row_number': idx + 1,
+                    'status': 'success',
+                    'message': 'OK',
+                    'dropped_by_filter': False,
+                    'validation_passed': True,
+                    'validation_errors': [],
+                }
+
+                # 1. Apply Transformation Stage
+                try:
+                    clean_row = self._apply_transformation_stage(raw_row)
+                    transformed_records.append(clean_row)
+                except UserError as ue:
+                    err_msg = str(ue)
+                    status_info['status'] = 'skipped'
+                    status_info['dropped_by_filter'] = True
+                    status_info['message'] = _("Dropped by transform filter: %s") % err_msg
+                    transformed_records.append(dict(raw_row))
+                    mapped_records.append({})
+                    row_statuses.append(status_info)
+                    continue
+                except Exception as ex:
+                    status_info['status'] = 'error'
+                    status_info['message'] = _("Transform error: %s") % str(ex)
+                    transformed_records.append(dict(raw_row))
+                    mapped_records.append({})
+                    row_statuses.append(status_info)
+                    continue
+
+                # 2. Evaluate Validation Rules
+                for rule in validation_rules:
+                    target_f = rule.target_field_name or rule.source_field
+                    val = clean_row.get(target_f, clean_row.get(rule.source_field, raw_row.get(rule.source_field)))
+                    is_valid, v_err = rule.evaluate_rule(val, clean_row)
+                    if not is_valid:
+                        status_info['validation_passed'] = False
+                        status_info['validation_errors'].append(f"{rule.name}: {v_err}")
+                        if rule.action_on_failure in ('reject_record', 'abort_stage'):
+                            status_info['status'] = 'rejected'
+                            status_info['message'] = v_err
+
+                # 3. Apply Mapping Stage
+                try:
+                    mapped_vals = self._apply_mapping_stage(clean_row)
+                    mapped_records.append(mapped_vals)
+                except Exception as ex:
+                    status_info['status'] = 'error'
+                    status_info['message'] = _("Mapping error: %s") % str(ex)
+                    mapped_records.append({})
+
+                row_statuses.append(status_info)
+
+            transformed_cols = []
+            if transformed_records:
+                for r in transformed_records:
+                    for k in r.keys():
+                        if k not in transformed_cols:
+                            transformed_cols.append(k)
+
+            mapped_cols = [m.target_field_name for m in self.mapping_line_ids if m.target_field_name]
+            if not mapped_cols and mapped_records:
+                for r in mapped_records:
+                    for k in r.keys():
+                        if k not in mapped_cols:
+                            mapped_cols.append(k)
+
+            duration_ms = round((time.time() - start_ts) * 1000.0, 2)
+
+            preview_payload = {
+                'raw_records': raw_records,
+                'raw_columns': raw_columns,
+                'transformed_records': transformed_records,
+                'transformed_columns': transformed_cols,
+                'mapped_records': mapped_records,
+                'mapped_columns': mapped_cols,
+                'row_statuses': row_statuses,
+                'total_extracted': len(raw_records),
+                'latency_ms': duration_ms,
+                'success': True,
+            }
+
+            self.write({
+                'preview_data': json.dumps(preview_payload, default=str),
+                'preview_records_count': len(raw_records),
+                'preview_latency': duration_ms,
+            })
+
+            return preview_payload
+
+        except Exception as e:
+            _logger.exception("Data preview failed for template ID %s", self.id)
+            return {
+                'success': False,
+                'error': str(e),
+                'raw_records': [],
+                'transformed_records': [],
+                'mapped_records': [],
+                'row_statuses': [],
+                'total_extracted': 0,
+                'latency_ms': 0.0,
+            }
+
+    def action_test_preview(self):
+        """Quick action button to run preview and display notification."""
+        self.ensure_one()
+        res = self.run_preview_pipeline(limit=10)
+        if res.get('success'):
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Preview Pipeline Completed'),
+                    'message': _('Processed %d sample records across all ETL stages in %s ms.', res.get('total_extracted', 0), res.get('latency_ms', 0)),
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        else:
+            raise UserError(_("Preview failed: %s") % res.get('error', 'Unknown error'))
 
     def action_open_run_wizard(self):
         """Opens quick execution wizard for this template."""

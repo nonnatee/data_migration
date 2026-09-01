@@ -59,6 +59,14 @@ export class VisualMapperWidget extends Component {
             sampleInput: " 150.50 lbs ",
             sampleResult: null,
             isTestingSample: false,
+
+            // Stage 3: Data Preview & Pipeline Audit State
+            previewSubTab: "comparison", // 'comparison', 'transformed', 'mapped', 'raw'
+            previewData: null,
+            isRunningPreview: false,
+            previewError: null,
+            expandedPreviewRow: null,
+            previewSearch: "",
         });
 
         onWillStart(async () => {
@@ -108,6 +116,10 @@ export class VisualMapperWidget extends Component {
             this.state.mappings = data.mappings || [];
             this.state.transformPresets = data.transform_presets || [];
 
+            if (data.preview_data && data.preview_data.raw_records) {
+                this.state.previewData = data.preview_data;
+            }
+
             this.updateDerivedVariables();
 
             if (this.state.rawColumns.length > 0 && !this.state.selectedSourceCol) {
@@ -127,7 +139,78 @@ export class VisualMapperWidget extends Component {
         this.updateDerivedVariables();
         if (mode === "mapping") {
             setTimeout(() => this.updateSvgLines(), 100);
+        } else if (mode === "preview" && !this.state.previewData && !this.state.isRunningPreview) {
+            this.runPreviewPipeline();
         }
+    }
+
+    async runPreviewPipeline() {
+        const id = this.resId;
+        if (!id) return;
+
+        // Auto-save transformations and mappings first
+        await this.saveAll();
+
+        this.state.isRunningPreview = true;
+        this.state.previewError = null;
+        try {
+            const res = await this.orm.call("migration.template", "run_preview_pipeline", [[id], 10]);
+            if (res.success) {
+                this.state.previewData = res;
+                this.state.activeMode = "preview";
+                this.notification.add(`Pipeline preview loaded (${res.total_extracted} records, ${res.latency_ms} ms)`, { type: "success" });
+            } else {
+                this.state.previewError = res.error;
+                this.notification.add(`Preview failed: ${res.error}`, { type: "danger" });
+            }
+        } catch (err) {
+            this.state.previewError = err.message || String(err);
+            this.notification.add(`Preview error: ${err.message || err}`, { type: "danger" });
+        } finally {
+            this.state.isRunningPreview = false;
+        }
+    }
+
+    switchPreviewSubTab(tab) {
+        this.state.previewSubTab = tab;
+    }
+
+    toggleExpandRow(idx) {
+        this.state.expandedPreviewRow = this.state.expandedPreviewRow === idx ? null : idx;
+    }
+
+    formatCell(row, col) {
+        if (!row) return "";
+        const val = row[col];
+        if (val === undefined || val === null) return "";
+        if (typeof val === "object") return JSON.stringify(val);
+        return String(val);
+    }
+
+    get filteredPreviewRows() {
+        if (!this.state.previewData) return [];
+        const sub = this.state.previewSubTab;
+        let rows = [];
+        if (sub === "raw") rows = this.state.previewData.raw_records || [];
+        else if (sub === "transformed") rows = this.state.previewData.transformed_records || [];
+        else if (sub === "mapped") rows = this.state.previewData.mapped_records || [];
+        else rows = this.state.previewData.raw_records || [];
+
+        const q = (this.state.previewSearch || "").trim().toLowerCase();
+        if (!q) return rows;
+
+        return rows.filter(r => {
+            return Object.values(r).some(v => String(v).toLowerCase().includes(q));
+        });
+    }
+
+    get previewColumns() {
+        if (!this.state.previewData) return [];
+        const sub = this.state.previewSubTab;
+        if (sub === "raw") return this.state.previewData.raw_columns || [];
+        if (sub === "transformed") return this.state.previewData.transformed_columns || [];
+        if (sub === "mapped") return this.state.previewData.mapped_columns || [];
+        return this.state.previewData.raw_columns || [];
     }
 
     updateDerivedVariables() {

@@ -293,3 +293,58 @@ class TestMigrationExtractionValidation(common.TransactionCase):
         self.assertEqual(view_action['res_model'], 'migration.template')
         self.assertEqual(view_action['domain'], [('extraction_id', '=', extraction.id)])
 
+    def test_08_template_end_to_end_preview_pipeline(self):
+        """Test the end-to-end pipeline preview execution on migration.template."""
+        template = self.env['migration.template'].create({
+            'name': 'End to End Preview Template',
+            'connection_id': self.conn.id,
+            'target_model_id': self.partner_model.id,
+        })
+
+        # Add transformation: UPPERCASE on name
+        self.env['migration.transformation.line'].create({
+            'template_id': template.id,
+            'sequence': 10,
+            'source_field': 'name',
+            'output_field': 'clean_name',
+            'transform_category': 'cleansing',
+            'cleansing_type': 'upper',
+        })
+
+        # Add mapping: clean_name -> name
+        name_field = self.env['ir.model.fields'].search([
+            ('model_id', '=', self.partner_model.id),
+            ('name', '=', 'name'),
+        ], limit=1)
+        self.env['migration.mapping.line'].create({
+            'template_id': template.id,
+            'sequence': 10,
+            'source_field': 'clean_name',
+            'target_field_id': name_field.id,
+        })
+
+        # Run preview pipeline
+        preview_res = template.run_preview_pipeline(limit=5)
+        self.assertTrue(preview_res['success'])
+        self.assertGreater(preview_res['total_extracted'], 0)
+        self.assertIn('raw_records', preview_res)
+        self.assertIn('transformed_records', preview_res)
+        self.assertIn('mapped_records', preview_res)
+        self.assertIn('row_statuses', preview_res)
+
+        # Check transformed record has uppercase name
+        first_clean = preview_res['transformed_records'][0]
+        self.assertIn('clean_name', first_clean)
+        self.assertEqual(first_clean['clean_name'], first_clean['clean_name'].upper())
+
+        # Check mapped record has Odoo target field
+        first_mapped = preview_res['mapped_records'][0]
+        self.assertIn('name', first_mapped)
+        self.assertEqual(first_mapped['name'], first_clean['clean_name'])
+
+        # Check action_test_preview notification
+        act = template.action_test_preview()
+        self.assertEqual(act['tag'], 'display_notification')
+        self.assertEqual(act['params']['type'], 'success')
+
+

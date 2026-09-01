@@ -27,6 +27,7 @@
             <form string="Mapping Template">
                 <header>
                     <button name="action_open_run_wizard" type="object" string="Run Migration Job" class="btn-primary" icon="fa-play"/>
+                    <button name="action_test_preview" type="object" string="Preview Pipeline" class="btn-outline-success" icon="fa-play-circle"/>
                     <button name="action_auto_map_fields" type="object" string="Auto-Map Fields" class="btn-secondary" icon="fa-magic"/>
                     <button name="action_ai_auto_map_fields" type="object" string="AI Auto-Map" class="btn-outline-primary" icon="fa-bolt"/>
                     <button name="action_ai_suggest_validation_rules" type="object" string="AI Suggest Rules" class="btn-outline-info" icon="fa-check-circle"/>
@@ -241,6 +242,24 @@
                                     </group>
                                 </form>
                             </field>
+                        </page>
+
+                        <!-- STAGE 3: DATA PREVIEW & AUDIT -->
+                        <page string="Stage 3: Data Preview &amp; Audit" name="pipeline_preview">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <h4 class="mb-1 text-primary"><i class="fa fa-table me-2"/>End-to-End Pipeline Data Preview</h4>
+                                    <p class="text-muted mb-0">Runs top 10 sample records through extraction, transformations, validations, and target field mapping without writing to database.</p>
+                                </div>
+                                <button name="action_test_preview" type="object" string="Re-run Pipeline Preview" class="btn btn-sm btn-primary" icon="fa-refresh"/>
+                            </div>
+                            <group>
+                                <group string="Preview Runtime Statistics">
+                                    <field name="preview_records_count" string="Extracted Sample Records" readonly="1"/>
+                                    <field name="preview_latency" string="Pipeline Execution Latency (ms)" readonly="1"/>
+                                </group>
+                            </group>
+                            <field name="preview_data" widget="text" readonly="1" invisible="not preview_data"/>
                         </page>
 
                         <page string="Quality &amp; Audit Report" name="quality_report">
