@@ -416,6 +416,7 @@ export class VisualMapperWidget extends Component {
             let val = this.state.sampleInput;
             for (const t of this.state.transformations) {
                 val = this.evaluateSingleTransformClient(val, t);
+                if (val === "[SKIPPED / FILTERED OUT]") break;
             }
             this.state.sampleResult = JSON.stringify(val);
         } catch (e) {
@@ -425,21 +426,71 @@ export class VisualMapperWidget extends Component {
         }
     }
 
-    evaluateSingleTransformClient(val, t) {
-        if (t.transform_category === "filter_row") {
-            const s = String(val).trim();
-            const target = String(t.filter_value || "").trim();
-            let matched = false;
-            if (t.filter_operator === "=") matched = s.toLowerCase() === target.toLowerCase();
-            else if (t.filter_operator === "!=") matched = s.toLowerCase() !== target.toLowerCase();
-            else if (t.filter_operator === "contains") matched = s.toLowerCase().includes(target.toLowerCase());
-            else if (t.filter_operator === "is_null") matched = s === "";
-            else if (t.filter_operator === "is_not_null") matched = s !== "";
-            else matched = true;
+    evaluateConditionClient(val, t) {
+        const s = String(val === null || val === undefined ? "" : val);
+        const op = t.filter_operator || "=";
+        const target = String(t.filter_value || "");
 
+        if (op === "is_null") return s.trim() === "";
+        if (op === "is_not_null") return s.trim() !== "";
+        if (op === "contains") return s.toLowerCase().includes(target.toLowerCase());
+        if (op === "not_contains") return !s.toLowerCase().includes(target.toLowerCase());
+        if (op === "in") {
+            const items = target.split(",").map(i => i.trim().toLowerCase());
+            return items.includes(s.trim().toLowerCase());
+        }
+        if (op === "regex") {
+            try {
+                return new RegExp(target, "i").test(s);
+            } catch (e) {
+                return false;
+            }
+        }
+        if (op === "python") {
+            try {
+                const value = s;
+                if (target.includes("isalpha()")) return /^[a-zA-Z]+$/.test(value);
+                if (target.includes("isdigit()")) return /^\d+$/.test(value);
+                const num = parseFloat(s) || 0;
+                return Boolean(eval(target.replace(/bool\(/g, "Boolean(")));
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // Numeric or text comparison
+        const numVal = parseFloat(s.replace(/[^\d.-]/g, ""));
+        const numTarget = parseFloat(target.replace(/[^\d.-]/g, ""));
+        const isNum = !isNaN(numVal) && !isNaN(numTarget) && target.trim() !== "";
+
+        if (op === "=") return isNum ? numVal === numTarget : s.toLowerCase() === target.toLowerCase();
+        if (op === "!=") return isNum ? numVal !== numTarget : s.toLowerCase() !== target.toLowerCase();
+        if (op === ">") return isNum ? numVal > numTarget : s > target;
+        if (op === "<") return isNum ? numVal < numTarget : s < target;
+        if (op === ">=") return isNum ? numVal >= numTarget : s >= target;
+        if (op === "<=") return isNum ? numVal <= numTarget : s <= target;
+
+        return true;
+    }
+
+    evaluateSingleTransformClient(val, t) {
+        if (val === "[SKIPPED / FILTERED OUT]") return val;
+
+        // 1. Row Filter Category
+        if (t.transform_category === "filter_row") {
+            const matched = this.evaluateConditionClient(val, t);
             if (t.filter_action === "keep_if" && !matched) return "[SKIPPED / FILTERED OUT]";
             if (t.filter_action === "drop_if" && matched) return "[SKIPPED / FILTERED OUT]";
             return val;
+        }
+
+        // 2. Conditional Execution Filter on Standard Transformation
+        if (t.apply_filter) {
+            const matched = this.evaluateConditionClient(val, t);
+            if (!matched) {
+                // Condition not met: keep current value unmodified
+                return val;
+            }
         }
 
         if (t.transform_category === "cleansing") {
