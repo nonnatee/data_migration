@@ -260,10 +260,19 @@ Output a JSON array of rule objects with keys:
             }
         }
 
+    @api.onchange('connection_id')
+    def _onchange_connection_id(self):
+        if self.extraction_id and self.extraction_id.connection_id != self.connection_id:
+            self.extraction_id = False
+
     def action_audit_data_quality(self):
         """Audits source data quality, computing a 0-100% health score and report."""
         self.ensure_one()
-        records, cols = self.connection_id._fetch_raw_records(limit=200)
+        if self.extraction_id:
+            records, cols = self.extraction_id.execute_extraction(limit=200, update_watermark=False)
+        else:
+            records, cols = self.connection_id._fetch_raw_records(limit=200)
+
         if not records:
             raise UserError(_("No records fetched from connection to audit."))
 
@@ -320,7 +329,10 @@ Output a JSON array of rule objects with keys:
     def action_get_visual_mapping_data(self):
         """API endpoint providing schema, transformations, and mappings for Visual Mapper Widget."""
         self.ensure_one()
-        raw_cols = json.loads(self.connection_id.source_columns or '[]')
+        if self.extraction_id:
+            raw_cols = self.extraction_id.get_extraction_columns()
+        else:
+            raw_cols = json.loads(self.connection_id.source_columns or '[]')
         available_vars = self.get_available_source_variables()
 
         target_fields = self.env['ir.model.fields'].search([
@@ -405,6 +417,8 @@ Output a JSON array of rule objects with keys:
             'template_id': self.id,
             'template_name': self.name,
             'connection_name': self.connection_id.name,
+            'extraction_id': self.extraction_id.id if self.extraction_id else False,
+            'extraction_name': self.extraction_id.name if self.extraction_id else '',
             'target_model_name': self.target_model_name,
             'raw_columns': raw_cols,
             'available_variables': available_vars,

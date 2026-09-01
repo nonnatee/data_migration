@@ -26,6 +26,9 @@
                     <span t-if="state.templateName" class="badge bg-secondary text-white px-2 py-1 fs-6">
                         <i class="fa fa-database me-1"/><t t-out="state.connectionName"/> &amp;rarr; <t t-out="state.targetModelName"/>
                     </span>
+                    <span t-if="state.extractionName" class="badge bg-info text-dark px-2 py-1 fs-6 ms-1" title="Active Extraction Query">
+                        <i class="fa fa-filter me-1"/><t t-out="state.extractionName"/>
+                    </span>
                 </div>
 
                 <!-- Right Action Buttons -->
@@ -64,11 +67,11 @@
             <!-- MODE 1: TRANSFORMATION STUDIO -->
             <div t-if="!state.isLoading and state.activeMode == 'transform'" class="o_transform_studio d-flex flex-grow-1 overflow-hidden">
                 
-                <!-- Left Panel: Raw Source Columns -->
+                <!-- Left Panel: Raw / Extracted Source Columns -->
                 <div class="border-end bg-light d-flex flex-column" style="width: 260px; min-width: 240px;">
                     <div class="p-3 border-bottom bg-view">
                         <span class="fw-bold text-uppercase fs-7 text-muted">
-                            <i class="fa fa-columns me-1"/> Raw Columns (<t t-out="state.rawColumns.length"/>)
+                            <i class="fa fa-columns me-1"/> <t t-if="state.extractionName">Extraction Columns</t><t t-else="">Raw Columns</t> (<t t-out="state.rawColumns.length"/>)
                         </span>
                         <input type="text" class="form-control form-control-sm mt-2" placeholder="Filter columns..." t-model="state.sourceSearch"/>
                     </div>

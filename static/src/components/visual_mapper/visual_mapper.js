@@ -25,9 +25,12 @@ export class VisualMapperWidget extends Component {
             isLoading: true,
             isSaving: false,
             activeMode: "transform", // 'transform' or 'mapping'
+            // Record data
             templateId: null,
             templateName: "",
             connectionName: "",
+            extractionId: null,
+            extractionName: "",
             targetModelName: "",
             rawColumns: [],
             availableVariables: [],
@@ -96,6 +99,8 @@ export class VisualMapperWidget extends Component {
             this.state.templateId = data.template_id;
             this.state.templateName = data.template_name;
             this.state.connectionName = data.connection_name;
+            this.state.extractionId = data.extraction_id || null;
+            this.state.extractionName = data.extraction_name || "";
             this.state.targetModelName = data.target_model_name;
             this.state.rawColumns = data.raw_columns || [];
             this.state.targetFields = data.target_fields || [];

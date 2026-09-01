@@ -50,6 +50,7 @@
             <form string="Data Extraction Configuration">
                 <header>
                     <button name="action_test_extraction" type="object" string="Test Extraction Sample" class="btn-primary" icon="fa-play"/>
+                    <button name="action_create_template" type="object" string="Create Mapping Template" class="btn-outline-primary" icon="fa-plus"/>
                     <button name="action_ai_optimize_query" type="object" string="AI Optimize Query" class="btn-secondary" icon="fa-magic"/>
                     <button name="action_ai_advise_watermark" type="object" string="AI Advise Watermark" class="btn-secondary" icon="fa-lightbulb-o"/>
                     <button name="action_reset_watermark" type="object" string="Reset Watermark" class="btn-secondary" icon="fa-refresh"
@@ -57,6 +58,15 @@
                             confirm="Are you sure you want to reset the watermark? Next extraction will process all source records from the beginning."/>
                 </header>
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_templates"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-sliders">
+                            <field name="template_count" widget="statinfo" string="Templates"/>
+                        </button>
+                    </div>
+
                     <div class="oe_title">
                         <label for="name" class="oe_edit_only"/>
                         <h1>
@@ -81,6 +91,20 @@
                         <!-- Visual Studio Tab -->
                         <page string="Visual Query Studio" name="visual_studio">
                             <widget name="visual_extraction_builder"/>
+                        </page>
+
+                        <!-- Mapping Templates Tab -->
+                        <page string="Mapping Templates" name="templates" invisible="template_count == 0">
+                            <field name="template_ids" readonly="1">
+                                <list string="Mapping Templates">
+                                    <field name="name"/>
+                                    <field name="target_model_id"/>
+                                    <field name="operation_mode"/>
+                                    <field name="transform_line_count" string="Transforms"/>
+                                    <field name="mapping_line_count" string="Mappings"/>
+                                    <field name="quality_score" widget="progressbar"/>
+                                </list>
+                            </field>
                         </page>
 
                         <!-- Execution & Advanced Settings -->

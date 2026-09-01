@@ -107,6 +107,45 @@ class MigrationExtraction(models.Model):
     latency_ms = fields.Float(string='Extraction Latency (ms)', readonly=True)
     preview_data = fields.Text(string='Extraction Preview (JSON)', readonly=True)
 
+    # Linked Mapping Templates
+    template_ids = fields.One2many('migration.template', 'extraction_id', string='Mapping Templates')
+    template_count = fields.Integer(string='Templates Count', compute='_compute_template_count')
+
+    def _compute_template_count(self):
+        for rec in self:
+            rec.template_count = len(rec.template_ids)
+
+    def action_view_templates(self):
+        """Views all mapping templates configured with this extraction query."""
+        self.ensure_one()
+        return {
+            'name': _('Mapping Templates: %s') % self.name,
+            'type': 'ir.actions.act_window',
+            'res_model': 'migration.template',
+            'view_mode': 'list,form',
+            'domain': [('extraction_id', '=', self.id)],
+            'context': {
+                'default_connection_id': self.connection_id.id if self.connection_id else False,
+                'default_extraction_id': self.id,
+            }
+        }
+
+    def action_create_template(self):
+        """Quick action to create a new mapping template pre-filled with this extraction."""
+        self.ensure_one()
+        return {
+            'name': _('Create Mapping Template'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'migration.template',
+            'view_mode': 'form',
+            'target': 'current',
+            'context': {
+                'default_name': _('%s Template') % self.name,
+                'default_connection_id': self.connection_id.id if self.connection_id else False,
+                'default_extraction_id': self.id,
+            }
+        }
+
     # ------------------------------------------------------------
     # 1. QUERY COMPILATION & SAFETY VALIDATION
     # ------------------------------------------------------------
@@ -135,10 +174,15 @@ class MigrationExtraction(models.Model):
         conn_type = self.conn_type or 'database_sql'
 
         # If not using visual builder or strategy is custom_query, return custom_query or connection query
-        if not self.use_visual_builder and self.extraction_type == 'custom_query':
-            q = self.custom_query or (self.connection_id and self.connection_id.db_query) or "SELECT * FROM source_table"
-            self._validate_query_safety(q)
-            return q
+        if not self.use_visual_builder or self.extraction_type == 'custom_query':
+            if self.custom_query:
+                q = self.custom_query
+                self._validate_query_safety(q)
+                return q
+            elif not self.use_visual_builder:
+                q = (self.connection_id and self.connection_id.db_query) or "SELECT * FROM source_table"
+                self._validate_query_safety(q)
+                return q
 
         # Visual Builder SQL generation
         table_name = self.selected_table or 'source_table'
@@ -218,20 +262,83 @@ class MigrationExtraction(models.Model):
         self._validate_query_safety(query_sql)
         return query_sql
 
+    def _extract_columns_from_query(self, query):
+        """Helper to extract output column aliases/names from a SQL SELECT query."""
+        if not query:
+            return []
+        match = re.search(r'SELECT\s+(.*?)\s+FROM', query, flags=re.IGNORECASE | re.DOTALL)
+        if not match:
+            return []
+        select_part = match.group(1).strip()
+        if select_part == '*':
+            return []
+
+        # Split projections respecting parentheses
+        parts = []
+        cur = []
+        paren_depth = 0
+        for ch in select_part:
+            if ch == '(':
+                paren_depth += 1
+            elif ch == ')':
+                paren_depth -= 1
+            elif ch == ',' and paren_depth == 0:
+                parts.append(''.join(cur).strip())
+                cur = []
+                continue
+            cur.append(ch)
+        if cur:
+            parts.append(''.join(cur).strip())
+
+        cols = []
+        for p in parts:
+            p_clean = re.sub(r'--.*?$|/\*.*?\*/', '', p).strip()
+            as_match = re.search(r'\bAS\s+([a-zA-Z0-9_"]+)$', p_clean, re.IGNORECASE)
+            if as_match:
+                cols.append(as_match.group(1).strip('"`[]'))
+            else:
+                tokens = p_clean.split()
+                if len(tokens) > 1 and not tokens[-1].endswith(')'):
+                    cols.append(tokens[-1].strip('"`[]'))
+                elif tokens:
+                    col_name = tokens[0].split('.')[-1].strip('"`[]')
+                    if col_name and not col_name.endswith(')'):
+                        cols.append(col_name)
+        return [c for c in cols if c and c != '*']
+
     def get_extraction_columns(self):
         """Returns the list of column names produced by this extraction query for downstream templates."""
         self.ensure_one()
+        # 1. From Visual Builder configured fields if enabled or available
         selected_fields = json.loads(self.selected_fields_json or '[]')
         active_fields = [f for f in selected_fields if f.get('selected', True)]
-        if active_fields:
+        if active_fields and (self.use_visual_builder or not self.custom_query):
             cols = []
             for f in active_fields:
                 alias = f.get('alias', '').strip()
                 field = f.get('field', '').strip()
                 cols.append(alias or field)
-            return [c for c in cols if c]
+            cols = [c for c in cols if c]
+            if cols:
+                return cols
 
-        # Fallback to connection discovered columns
+        # 2. From Preview Data if available
+        if self.preview_data:
+            try:
+                preview_rows = json.loads(self.preview_data)
+                if preview_rows and isinstance(preview_rows, list) and isinstance(preview_rows[0], dict):
+                    return list(preview_rows[0].keys())
+            except Exception:
+                pass
+
+        # 3. From SQL Query string parsing
+        query_to_parse = self.compiled_query or self.custom_query
+        if query_to_parse:
+            parsed_cols = self._extract_columns_from_query(query_to_parse)
+            if parsed_cols:
+                return parsed_cols
+
+        # 4. Fallback to connection discovered columns
         if self.connection_id and self.connection_id.source_columns:
             return json.loads(self.connection_id.source_columns)
         return []

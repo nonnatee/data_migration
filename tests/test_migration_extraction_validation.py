@@ -213,3 +213,83 @@ class TestMigrationExtractionValidation(common.TransactionCase):
         self.assertTrue(preview_res['success'])
         self.assertEqual(preview_res['columns'], ['partner_ref', 'name', 'age_years'])
         self.assertEqual(len(preview_res['records']), 3)
+
+    def test_06_extraction_query_reflects_on_template_and_visual_mapper(self):
+        """Test that extraction query column aliases and projections are accurately reflected in mapping templates and Visual Mapper data."""
+        extraction = self.env['migration.extraction'].create({
+            'name': 'Aliased Customer Extraction',
+            'connection_id': self.conn.id,
+            'selected_fields_json': json.dumps([
+                {'field': 'id', 'alias': 'partner_code', 'selected': True},
+                {'field': 'name', 'alias': 'customer_name', 'selected': True},
+                {'field': 'email', 'alias': 'work_email', 'selected': True},
+                {'field': 'age', 'alias': 'age', 'selected': False},  # Excluded
+            ]),
+        })
+
+        # Check extraction columns
+        cols = extraction.get_extraction_columns()
+        self.assertEqual(cols, ['partner_code', 'customer_name', 'work_email'])
+
+        # Create mapping template linked to this extraction
+        template = self.env['migration.template'].create({
+            'name': 'Customer Sync Template',
+            'connection_id': self.conn.id,
+            'extraction_id': extraction.id,
+            'target_model_id': self.partner_model.id,
+        })
+
+        # 1. Available variables must reflect extraction query columns
+        available_vars = template.get_available_source_variables()
+        self.assertIn('partner_code', available_vars)
+        self.assertIn('customer_name', available_vars)
+        self.assertIn('work_email', available_vars)
+        self.assertNotIn('age', available_vars)
+
+        # 2. Visual Mapper Data API must return extraction columns and metadata
+        mapper_data = template.action_get_visual_mapping_data()
+        self.assertEqual(mapper_data['extraction_id'], extraction.id)
+        self.assertEqual(mapper_data['extraction_name'], 'Aliased Customer Extraction')
+        self.assertEqual(mapper_data['raw_columns'], ['partner_code', 'customer_name', 'work_email'])
+        self.assertIn('partner_code', mapper_data['available_variables'])
+
+        # 3. Data Quality audit must execute extraction query
+        template.action_audit_data_quality()
+        self.assertGreater(template.quality_score, 0.0)
+        self.assertTrue(template.quality_report)
+
+    def test_07_extraction_bi_directional_template_actions(self):
+        """Test template_ids relation on extraction and quick template creation action."""
+        extraction = self.env['migration.extraction'].create({
+            'name': 'Source Delta Extraction',
+            'connection_id': self.conn.id,
+            'custom_query': 'SELECT id AS account_id, name AS org_name, email FROM contacts',
+            'use_visual_builder': False,
+            'extraction_type': 'custom_query',
+        })
+
+        # Verify SQL column parsing helper extracts aliases
+        parsed_cols = extraction.get_extraction_columns()
+        self.assertEqual(parsed_cols, ['account_id', 'org_name', 'email'])
+
+        # Check template creation action
+        action_dict = extraction.action_create_template()
+        self.assertEqual(action_dict['res_model'], 'migration.template')
+        self.assertEqual(action_dict['context']['default_extraction_id'], extraction.id)
+        self.assertEqual(action_dict['context']['default_connection_id'], self.conn.id)
+
+        # Create template and verify reverse relation
+        template = self.env['migration.template'].create({
+            'name': action_dict['context']['default_name'],
+            'connection_id': action_dict['context']['default_connection_id'],
+            'extraction_id': action_dict['context']['default_extraction_id'],
+            'target_model_id': self.partner_model.id,
+        })
+        self.assertEqual(extraction.template_count, 1)
+        self.assertIn(template, extraction.template_ids)
+
+        # Verify view templates action
+        view_action = extraction.action_view_templates()
+        self.assertEqual(view_action['res_model'], 'migration.template')
+        self.assertEqual(view_action['domain'], [('extraction_id', '=', extraction.id)])
+
