@@ -63,6 +63,7 @@ export class VisualMapperWidget extends Component {
             // Stage 3: Data Preview & Pipeline Audit State
             previewSubTab: "comparison", // 'comparison', 'transformed', 'mapped', 'raw'
             previewData: null,
+            previewSampleSize: 100,
             isRunningPreview: false,
             previewError: null,
             expandedPreviewRow: null,
@@ -115,6 +116,7 @@ export class VisualMapperWidget extends Component {
             this.state.transformations = data.transformations || [];
             this.state.mappings = data.mappings || [];
             this.state.transformPresets = data.transform_presets || [];
+            this.state.previewSampleSize = data.preview_sample_size || 100;
 
             if (data.preview_data && data.preview_data.raw_records) {
                 this.state.previewData = data.preview_data;
@@ -154,7 +156,8 @@ export class VisualMapperWidget extends Component {
         this.state.isRunningPreview = true;
         this.state.previewError = null;
         try {
-            const res = await this.orm.call("migration.template", "run_preview_pipeline", [[id], 10]);
+            const sampleLimit = parseInt(this.state.previewSampleSize, 10) || 100;
+            const res = await this.orm.call("migration.template", "run_preview_pipeline", [[id], sampleLimit]);
             if (res.success) {
                 this.state.previewData = res;
                 this.state.activeMode = "preview";
@@ -169,6 +172,11 @@ export class VisualMapperWidget extends Component {
         } finally {
             this.state.isRunningPreview = false;
         }
+    }
+
+    onChangePreviewSize(e) {
+        this.state.previewSampleSize = parseInt(e.target.value, 10) || 100;
+        this.runPreviewPipeline();
     }
 
     switchPreviewSubTab(tab) {

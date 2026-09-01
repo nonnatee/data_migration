@@ -254,6 +254,9 @@
                                 <button name="action_test_preview" type="object" string="Re-run Pipeline Preview" class="btn btn-sm btn-primary" icon="fa-refresh"/>
                             </div>
                             <group>
+                                <group string="Preview Configuration">
+                                    <field name="preview_sample_size"/>
+                                </group>
                                 <group string="Preview Runtime Statistics">
                                     <field name="preview_records_count" string="Extracted Sample Records" readonly="1"/>
                                     <field name="preview_latency" string="Pipeline Execution Latency (ms)" readonly="1"/>

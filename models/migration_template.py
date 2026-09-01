@@ -55,6 +55,8 @@ class MigrationTemplate(models.Model):
     preview_data = fields.Text(string='Pipeline Preview (JSON)', readonly=True)
     preview_records_count = fields.Integer(string='Sample Records Count', readonly=True)
     preview_latency = fields.Float(string='Preview Latency (ms)', readonly=True)
+    preview_sample_size = fields.Integer(string='Preview Sample Size', default=100,
+                                         help='Number of sample records fetched and evaluated during preview runs (10 - 500).')
 
     def _compute_stage_counts(self):
         for rec in self:
@@ -434,6 +436,7 @@ Output a JSON array of rule objects with keys:
             'preview_data': json.loads(self.preview_data or '{}') if self.preview_data else None,
             'preview_records_count': self.preview_records_count,
             'preview_latency': self.preview_latency,
+            'preview_sample_size': self.preview_sample_size or 100,
         }
 
     def action_save_visual_mapping_data(self, transformations, mappings):
@@ -506,9 +509,10 @@ Output a JSON array of rule objects with keys:
     # 4. PIPELINE PREVIEW & AUDIT ENGINE
     # ------------------------------------------------------------
 
-    def run_preview_pipeline(self, limit=10):
+    def run_preview_pipeline(self, limit=None):
         """Runs the end-to-end ETL pipeline on top sample records in-memory without database commits."""
         self.ensure_one()
+        limit = limit or self.preview_sample_size or 100
         start_ts = time.time()
         try:
             if self.extraction_id:
@@ -629,7 +633,7 @@ Output a JSON array of rule objects with keys:
     def action_test_preview(self):
         """Quick action button to run preview and display notification."""
         self.ensure_one()
-        res = self.run_preview_pipeline(limit=10)
+        res = self.run_preview_pipeline(limit=self.preview_sample_size or 100)
         if res.get('success'):
             return {
                 'type': 'ir.actions.client',

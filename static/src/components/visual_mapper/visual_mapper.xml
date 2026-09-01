@@ -598,10 +598,25 @@
                             </span>
                         </div>
 
-                        <!-- Search & Live Refresh -->
+                        <!-- Search, Sample Size & Live Refresh -->
                         <div class="d-flex align-items-center gap-2">
+                            <div class="d-flex align-items-center gap-1">
+                                <span class="fs-8 text-muted fw-bold text-uppercase">Sample Size:</span>
+                                <select class="form-select form-select-sm" style="width: 105px;"
+                                        t-att-value="state.previewSampleSize || 100"
+                                        t-on-change="(e) => this.onChangePreviewSize(e)"
+                                        title="Configure number of sample records fetched for preview">
+                                    <option value="10">10 rows</option>
+                                    <option value="25">25 rows</option>
+                                    <option value="50">50 rows</option>
+                                    <option value="100">100 rows</option>
+                                    <option value="250">250 rows</option>
+                                    <option value="500">500 rows</option>
+                                </select>
+                            </div>
+
                             <input t-if="state.previewData and state.previewSubTab != 'comparison'"
-                                   type="text" class="form-control form-control-sm" style="width: 200px;"
+                                   type="text" class="form-control form-control-sm" style="width: 180px;"
                                    placeholder="Filter table rows..." t-model="state.previewSearch"/>
                             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                                     t-on-click="runPreviewPipeline"
